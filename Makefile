@@ -8,7 +8,7 @@ SHELL := /bin/zsh
 PYTHON := .venv/bin/python
 PIP := .venv/bin/pip
 CC := clang
-CFLAGS := -O3 -march=native -Wall -Wextra
+CFLAGS := -O3 -march=native -Wall -Wextra -DACCELERATE_NEW_LAPACK
 
 # Output binaries
 TXN_GEN := src/generators/txn_generator
@@ -49,7 +49,7 @@ $(TXN_GEN): src/generators/txn_generator.c
 	$(CC) $(CFLAGS) -o $@ $< -lm -lpthread
 
 $(VECDB_LIB): src/vecdb/vecdb.c src/vecdb/vecdb.h
-	$(CC) $(CFLAGS) -c -o $@ $< -framework Accelerate
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 $(VECDB_TEST): src/vecdb/test_vecdb.c $(VECDB_LIB) src/vecdb/vecdb.h
 	$(CC) $(CFLAGS) -o $@ $< $(VECDB_LIB) -framework Accelerate -lm

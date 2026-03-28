@@ -1,57 +1,58 @@
 /*
- * vecdb.h — Lightweight vector database for item embeddings
+ * vecdb.h — Purpose-built vector database for two-tower model embeddings
  *
- * Stores dense float vectors and supports fast approximate nearest neighbor
- * search using brute-force dot product with Apple Accelerate SIMD.
+ * Stores 10M customer + 10K product embedding vectors (float32) and supports
+ * fast top-K cosine similarity queries using Apple Accelerate BLAS.
  *
- * Used at inference time to find top-K product recommendations for each user
- * by comparing user embeddings against pre-computed item embeddings.
+ * All vectors are L2-normalized on insert so dot product = cosine similarity.
+ * Queries are read-only and safe to call from multiple threads concurrently.
+ * Inserts are mutex-protected.
  */
 
 #ifndef VECDB_H
 #define VECDB_H
 
-#include <stddef.h>
 #include <stdint.h>
 
-/* Vector database handle */
-typedef struct {
-    float *data;       /* Contiguous array of all vectors: [num_vectors × dim] */
-    int32_t *ids;      /* Mapping from index to external ID */
-    size_t num_vectors;
-    size_t dim;
-    size_t capacity;
-} vecdb_t;
+typedef struct VecDB VecDB;
 
-/* Top-K result entry */
-typedef struct {
-    int32_t id;
-    float score;
-} vecdb_result_t;
+/* Create a new vector database.
+ * capacity: max vectors before realloc, dims: embedding dimensionality. */
+VecDB *vecdb_create(uint32_t capacity, uint16_t dims);
 
-/* Initialize a vector database with given dimension and initial capacity */
-int vecdb_init(vecdb_t *db, size_t dim, size_t initial_capacity);
+/* Free the database and all associated memory. */
+void vecdb_destroy(VecDB *db);
 
-/* Free all resources */
-void vecdb_free(vecdb_t *db);
+/* Insert a single vector. vec must point to `dims` floats.
+ * The vector is L2-normalized internally. Returns 0 on success. */
+int vecdb_insert(VecDB *db, uint32_t id, const float *vec);
 
-/* Add a vector with an external ID. Returns 0 on success. */
-int vecdb_add(vecdb_t *db, int32_t id, const float *vector);
+/* Batch insert n vectors from contiguous arrays.
+ * vecs: n × dims floats (row-major), ids: n uint32_t IDs. */
+int vecdb_batch_insert(VecDB *db, const uint32_t *ids,
+                       const float *vecs, uint32_t n);
 
-/* Find top-K nearest vectors by dot product similarity.
- * Results are written to `results` (must have space for `k` entries).
- * Returns the number of results written (<= k). */
-size_t vecdb_topk(const vecdb_t *db, const float *query, size_t k,
-                  vecdb_result_t *results);
+/* Find top-k most similar vectors to query (cosine similarity).
+ * Results written to out_ids[k] and out_scores[k], sorted descending. */
+int vecdb_query_topk(const VecDB *db, const float *query, uint32_t k,
+                     uint32_t *out_ids, float *out_scores);
 
-/* Batch top-K: query multiple vectors at once (for throughput).
- * `queries` is [num_queries × dim], results is [num_queries × k]. */
-size_t vecdb_topk_batch(const vecdb_t *db, const float *queries,
-                        size_t num_queries, size_t k,
-                        vecdb_result_t *results);
+/* Batch query: for each of n query vectors, find top-k similar.
+ * out_ids[n×k] and out_scores[n×k], each query's results sorted descending.
+ * Uses cblas_sgemm with chunked processing + GCD-parallel heap extraction. */
+int vecdb_batch_query_topk(const VecDB *db, const float *queries, uint32_t n,
+                           uint32_t k, uint32_t *out_ids, float *out_scores);
 
-/* Save/load database to/from file */
-int vecdb_save(const vecdb_t *db, const char *path);
-int vecdb_load(vecdb_t *db, const char *path);
+/* Save database to disk.
+ * Binary format: [magic "VCDB" 4B][version u32][count u32][dims u16]
+ *                [reserved 6B][ids: count×u32][vecs: count×dims×f32] */
+int vecdb_save(const VecDB *db, const char *path);
+
+/* Load database from disk. Returns NULL on failure. */
+VecDB *vecdb_load(const char *path);
+
+/* Accessors */
+uint32_t vecdb_count(const VecDB *db);
+uint16_t vecdb_dims(const VecDB *db);
 
 #endif /* VECDB_H */
