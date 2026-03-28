@@ -1,0 +1,94 @@
+"""CLI entry point for the toydatadecomp pipeline.
+
+Provides a unified command-line interface with subcommands for each
+pipeline stage: scrape, generate, load, train, infer, validate.
+
+Usage:
+    python src/cli.py scrape --stores
+    python src/cli.py generate --customers --count 10000000
+    python src/cli.py load
+    python src/cli.py train --epochs 5
+    python src/cli.py infer --top-k 20
+    python src/cli.py validate
+"""
+
+import click
+from rich.console import Console
+
+console = Console()
+
+
+@click.group()
+def cli():
+    """toydatadecomp — Retail Recommendation Engine CLI."""
+    pass
+
+
+@cli.command()
+@click.option("--stores/--no-stores", default=True, help="Scrape store locations.")
+@click.option("--products/--no-products", default=True, help="Scrape product catalog.")
+def scrape(stores: bool, products: bool) -> None:
+    """Scrape real CVS data (stores and products)."""
+    if stores:
+        from scrapers.scrape_stores import main as scrape_stores
+        console.print("[bold]→ Scraping stores...[/bold]")
+        scrape_stores(standalone_mode=False)
+    if products:
+        from scrapers.scrape_products import main as scrape_products
+        console.print("[bold]→ Scraping products...[/bold]")
+        scrape_products(standalone_mode=False)
+
+
+@cli.command()
+@click.option("--customers/--no-customers", default=True, help="Generate synthetic customers.")
+@click.option("--count", default=10_000_000, help="Number of customers to generate.")
+def generate(customers: bool, count: int) -> None:
+    """Generate synthetic data (customers, transactions)."""
+    if customers:
+        from generators.gen_customers import main as gen_customers
+        console.print(f"[bold]→ Generating {count:,} customers...[/bold]")
+        gen_customers(["--count", str(count)], standalone_mode=False)
+
+
+@cli.command()
+@click.option("--db-path", default="data/db/toydatadecomp.duckdb", help="DuckDB path.")
+def load(db_path: str) -> None:
+    """Load all data into DuckDB."""
+    from db.load_duckdb import main as load_db
+    console.print("[bold]→ Loading data into DuckDB...[/bold]")
+    load_db(["--db-path", db_path], standalone_mode=False)
+
+
+@cli.command()
+@click.option("--epochs", default=5, help="Training epochs.")
+@click.option("--batch-size", default=4096, help="Batch size.")
+@click.option("--lr", default=0.001, type=float, help="Learning rate.")
+def train(epochs: int, batch_size: int, lr: float) -> None:
+    """Train the two-tower recommendation model."""
+    from ml.train import main as train_model
+    console.print("[bold]→ Training model...[/bold]")
+    train_model(["--epochs", str(epochs), "--batch-size", str(batch_size),
+                 "--lr", str(lr)], standalone_mode=False)
+
+
+@cli.command()
+@click.option("--top-k", default=20, help="Recommendations per user.")
+@click.option("--batch-size", default=1024, help="Inference batch size.")
+def infer(top_k: int, batch_size: int) -> None:
+    """Run full inference (10M × 10K scoring)."""
+    from ml.inference import main as run_inference
+    console.print("[bold]→ Running inference...[/bold]")
+    run_inference(["--top-k", str(top_k), "--batch-size", str(batch_size)],
+                  standalone_mode=False)
+
+
+@cli.command()
+def validate() -> None:
+    """Run data validation checks."""
+    console.print("[bold]→ Running validation...[/bold]")
+    # TODO: Import and run validation
+    console.print("[yellow]Not yet implemented.[/yellow]")
+
+
+if __name__ == "__main__":
+    cli()

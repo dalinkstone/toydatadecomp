@@ -1,0 +1,14 @@
+requests
+beautifulsoup4
+lxml
+faker
+pyarrow
+duckdb
+tqdm
+torch
+torchvision
+numpy
+pandas
+click
+rich
+pytest
