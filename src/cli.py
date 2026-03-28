@@ -42,12 +42,28 @@ def scrape(stores: bool, products: bool) -> None:
 @cli.command()
 @click.option("--customers/--no-customers", default=True, help="Generate synthetic customers.")
 @click.option("--count", default=10_000_000, help="Number of customers to generate.")
-def generate(customers: bool, count: int) -> None:
-    """Generate synthetic data (customers, transactions)."""
+@click.option("--workers", default=8, help="Number of parallel workers.")
+@click.option("--batch-size", default=100_000, help="Customers per batch/file.")
+@click.option("--test", is_flag=True, help="Test mode: generate only 10,000 customers.")
+@click.option("--coupon-clips/--no-coupon-clips", default=True, help="Generate coupon clips.")
+def generate(customers: bool, count: int, workers: int, batch_size: int, test: bool,
+             coupon_clips: bool) -> None:
+    """Generate synthetic data (customers, coupon clips, transactions)."""
     if customers:
         from generators.gen_customers import main as gen_customers
-        console.print(f"[bold]→ Generating {count:,} customers...[/bold]")
-        gen_customers(["--count", str(count)], standalone_mode=False)
+        args = ["--count", str(count), "--workers", str(workers),
+                "--batch-size", str(batch_size)]
+        if test:
+            args.append("--test")
+        console.print(f"[bold]→ Generating customers...[/bold]")
+        gen_customers(args, standalone_mode=False)
+    if coupon_clips:
+        from generators.gen_coupon_clips import main as gen_clips
+        args = ["--workers", str(workers)]
+        if test:
+            args.append("--test")
+        console.print(f"[bold]→ Generating coupon clips...[/bold]")
+        gen_clips(args, standalone_mode=False)
 
 
 @cli.command()
