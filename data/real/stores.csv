@@ -1,0 +1,8 @@
+store_id,name,address,city,state,zip_code,latitude,longitude,phone,store_type,hours_mon_fri,hours_sat,hours_sun
+17435,CVS Pharmacy,1200 N Muldoon Rd,Anchorage,AK,99504,61.21147,-149.73676,(907) 332-1004,pharmacy,,,
+17436,CVS Pharmacy,150 W 100Th Ave,Anchorage,AK,99515,61.12958,-149.88045,(907) 267-7501,pharmacy,,,
+17404,CVS Pharmacy,1801 E Parks Hwy,Wasilla,AK,99654,61.57795,-149.40269,(907) 631-7201,pharmacy,,,
+17350,CVS Pharmacy,250 S Colonial Dr,Alabaster,AL,35007,33.22435,-86.80434,(205) 564-2609,pharmacy,,,
+4867,CVS Pharmacy,520 Highway 119,Alabaster,AL,35007,33.23882,-86.81784,(205) 663-5405,pharmacy,07:00 AM - 10:00 PM,08:00 AM - 09:00 PM,09:00 AM - 08:00 PM
+4910,CVS Pharmacy,6181 Us Hwy 431,Albertville,AL,35950,34.26589,-86.19331,(256) 878-3502,pharmacy,08:00 AM - 09:00 PM,09:00 AM - 09:00 PM,09:00 AM - 07:00 PM
+4946,CVS Pharmacy,"113 3Rd St, Se",Aliceville,AL,35442,33.12706,-88.1486,(205) 373-8475,pharmacy,09:00 AM - 07:00 PM,09:00 AM - 06:00 PM,10:00 AM - 06:00 PM
