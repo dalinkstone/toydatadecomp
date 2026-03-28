@@ -67,12 +67,18 @@ def generate(customers: bool, count: int, workers: int, batch_size: int, test: b
 
 
 @cli.command()
-@click.option("--db-path", default="data/db/toydatadecomp.duckdb", help="DuckDB path.")
-def load(db_path: str) -> None:
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb", help="DuckDB path.")
+@click.option("--data-dir", default="data", help="Root data directory.")
+@click.option("--materialize", is_flag=True, default=False,
+              help="Materialize expensive views as tables.")
+def load(db_path: str, data_dir: str, materialize: bool) -> None:
     """Load all data into DuckDB."""
     from db.load_duckdb import main as load_db
     console.print("[bold]→ Loading data into DuckDB...[/bold]")
-    load_db(["--db-path", db_path], standalone_mode=False)
+    args = ["--db-path", db_path, "--data-dir", data_dir]
+    if materialize:
+        args.append("--materialize")
+    load_db(args, standalone_mode=False)
 
 
 @cli.command()
@@ -99,11 +105,12 @@ def infer(top_k: int, batch_size: int) -> None:
 
 
 @cli.command()
-def validate() -> None:
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb", help="DuckDB path.")
+def validate(db_path: str) -> None:
     """Run data validation checks."""
+    from db.load_duckdb import validate as validate_db
     console.print("[bold]→ Running validation...[/bold]")
-    # TODO: Import and run validation
-    console.print("[yellow]Not yet implemented.[/yellow]")
+    validate_db(["--db-path", db_path], standalone_mode=False)
 
 
 if __name__ == "__main__":

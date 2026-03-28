@@ -92,7 +92,7 @@ test:
 	$(PYTHON) -m pytest tests/ -v
 
 validate:
-	$(PYTHON) scripts/validate.py
+	$(PYTHON) src/cli.py validate
 
 # --------------------------------------------------------------------------
 # Full pipelines
