@@ -1,0 +1,27 @@
+# Data files — regenerate with the generators
+data/real/*.csv
+data/real/*.parquet
+data/synthetic/customers/*.parquet
+data/synthetic/coupon_clips/*.parquet
+data/synthetic/transactions/*.csv.zst
+data/synthetic/transactions/*.csv.gz
+data/synthetic/transactions/*.csv
+data/db/*.duckdb
+data/db/*.duckdb.wal
+
+# Compiled binary
+txn_generator
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
