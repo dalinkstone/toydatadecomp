@@ -1,14 +1,15 @@
 """CLI entry point for the toydatadecomp pipeline.
 
 Provides a unified command-line interface with subcommands for each
-pipeline stage: scrape, generate, load, train, infer, validate.
+pipeline stage: scrape, generate, load, features, train, infer, validate.
 
 Usage:
     python src/cli.py scrape --stores
     python src/cli.py generate --customers --count 10000000
     python src/cli.py load
+    python src/cli.py features
     python src/cli.py train --epochs 5
-    python src/cli.py infer --top-k 20
+    python src/cli.py infer --mode full-matrix
     python src/cli.py validate
 """
 
@@ -82,26 +83,81 @@ def load(db_path: str, data_dir: str, materialize: bool) -> None:
 
 
 @cli.command()
-@click.option("--epochs", default=5, help="Training epochs.")
-@click.option("--batch-size", default=4096, help="Batch size.")
-@click.option("--lr", default=0.001, type=float, help="Learning rate.")
-def train(epochs: int, batch_size: int, lr: float) -> None:
-    """Train the two-tower recommendation model."""
-    from ml.train import main as train_model
-    console.print("[bold]→ Training model...[/bold]")
-    train_model(["--epochs", str(epochs), "--batch-size", str(batch_size),
-                 "--lr", str(lr)], standalone_mode=False)
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb", help="DuckDB path.")
+@click.option("--sample-pct", default=1.0, type=float,
+              help="Percent of transactions to sample (1.0 = 1%%).")
+@click.option("--skip-txn-scan", is_flag=True,
+              help="Skip if feature tables already exist.")
+def features(db_path: str, sample_pct: float, skip_txn_scan: bool) -> None:
+    """Run feature engineering (materializes DuckDB tables)."""
+    from ml.features import main as run_features
+    console.print("[bold]→ Running feature engineering...[/bold]")
+    args = ["--db-path", db_path, "--sample-pct", str(sample_pct)]
+    if skip_txn_scan:
+        args.append("--skip-txn-scan")
+    run_features(args, standalone_mode=False)
 
 
 @cli.command()
-@click.option("--top-k", default=20, help="Recommendations per user.")
-@click.option("--batch-size", default=1024, help="Inference batch size.")
-def infer(top_k: int, batch_size: int) -> None:
-    """Run full inference (10M × 10K scoring)."""
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb", help="DuckDB path.")
+@click.option("--epochs", default=5, help="Training epochs.")
+@click.option("--batch-size", default=8192, help="Batch size.")
+@click.option("--lr", default=0.001, type=float, help="Learning rate.")
+@click.option("--sample-pct", default=1.0, type=float,
+              help="Percent of transactions to sample.")
+@click.option("--device", default="auto",
+              type=click.Choice(["auto", "mps", "cpu"]))
+@click.option("--output-dir", default="data/model/", help="Model output directory.")
+@click.option("--neg-samples", default=4, help="Negative samples per positive.")
+@click.option("--margin-weight/--no-margin-weight", default=True,
+              help="Use margin-weighted loss.")
+@click.option("--skip-features", is_flag=True,
+              help="Skip feature engineering (assume tables exist).")
+def train(db_path: str, epochs: int, batch_size: int, lr: float,
+          sample_pct: float, device: str, output_dir: str,
+          neg_samples: int, margin_weight: bool, skip_features: bool) -> None:
+    """Train the two-tower recommendation model."""
+    from ml.train import main as train_model
+    console.print("[bold]→ Training model...[/bold]")
+    args = ["--db-path", db_path, "--epochs", str(epochs),
+            "--batch-size", str(batch_size), "--lr", str(lr),
+            "--sample-pct", str(sample_pct), "--device", device,
+            "--output-dir", output_dir, "--neg-samples", str(neg_samples)]
+    if margin_weight:
+        args.append("--margin-weight")
+    else:
+        args.append("--no-margin-weight")
+    if skip_features:
+        args.append("--skip-features")
+    train_model(args, standalone_mode=False)
+
+
+@cli.command()
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb", help="DuckDB path.")
+@click.option("--model-dir", default="data/model/", help="Model directory.")
+@click.option("--output-dir", default="data/results/", help="Results output directory.")
+@click.option("--mode", default="full-matrix",
+              type=click.Choice(["full-matrix", "per-product", "per-customer"]))
+@click.option("--top-k", default=100, help="Number of top products.")
+@click.option("--chunk-size", default=100_000, help="Customers per inference chunk.")
+@click.option("--device", default="auto",
+              type=click.Choice(["auto", "mps", "cpu"]))
+@click.option("--geographic/--no-geographic", default=True,
+              help="Include state-level geographic grouping.")
+def infer(db_path: str, model_dir: str, output_dir: str, mode: str,
+          top_k: int, chunk_size: int, device: str, geographic: bool) -> None:
+    """Run full inference (10M x 12K scoring)."""
     from ml.inference import main as run_inference
     console.print("[bold]→ Running inference...[/bold]")
-    run_inference(["--top-k", str(top_k), "--batch-size", str(batch_size)],
-                  standalone_mode=False)
+    args = ["--db-path", db_path, "--model-dir", model_dir,
+            "--output-dir", output_dir, "--mode", mode,
+            "--top-k", str(top_k), "--chunk-size", str(chunk_size),
+            "--device", device]
+    if geographic:
+        args.append("--geographic")
+    else:
+        args.append("--no-geographic")
+    run_inference(args, standalone_mode=False)
 
 
 @cli.command()

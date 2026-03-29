@@ -9,8 +9,11 @@
  *         Uses zstd compression via popen for ~10× disk savings.
  *
  * Compile: clang -O3 -march=native -o txn_generator src/generators/txn_generator.c -lm -lpthread
- * Run:     ./txn_generator [num_customers] [txns_per_customer] [num_products] [num_stores] [output_dir]
- * Default: ./txn_generator 10000000 1000 10000 9000 data/synthetic/transactions
+ * Run:     ./txn_generator [num_customers] [txns_per_customer] [num_products] [_] [output_dir] [stores_csv]
+ * Default: ./txn_generator 10000000 1000 12000 0 data/synthetic/transactions data/real/stores.csv
+ *
+ * Store IDs are loaded from stores.csv (real CVS store numbers) so that
+ * transaction.store_id correctly joins to the stores table.
  */
 
 #include <stdio.h>
@@ -29,10 +32,14 @@
 
 static int    g_num_customers     = 10000000;
 static int    g_txns_per_customer = 1000;
-static int    g_num_products      = 10000;
+static int    g_num_products      = 12000;
 static int    g_num_stores        = 9000;
 static int    g_num_threads       = 8;
 static char   g_output_dir[512]   = "data/synthetic/transactions";
+static char   g_stores_csv[512]   = "data/real/stores.csv";
+
+/* Real store IDs loaded from CSV (sorted for geographic proximity) */
+static int   *g_store_ids;
 
 #define NUM_STATES    50
 #define WRITE_BUF_SZ  (16 * 1024 * 1024)  /* 16 MB */
@@ -228,6 +235,54 @@ static inline int sample_hour(rng_t *r, int is_weekend) {
 }
 
 /* ========================================================================
+ * Store IDs — load real CVS store numbers from CSV
+ * ======================================================================== */
+
+static int compare_int(const void *a, const void *b) {
+    return *(const int *)a - *(const int *)b;
+}
+
+static void init_store_ids(void) {
+    FILE *fp = fopen(g_stores_csv, "r");
+    if (!fp) {
+        fprintf(stderr, "WARNING: Cannot open %s — using sequential store IDs\n",
+                g_stores_csv);
+        g_store_ids = malloc(g_num_stores * sizeof(int));
+        for (int i = 0; i < g_num_stores; i++)
+            g_store_ids[i] = i + 1;
+        return;
+    }
+
+    /* First pass: count data lines */
+    char line[4096];
+    int count = 0;
+    if (!fgets(line, sizeof(line), fp)) { fclose(fp); return; } /* skip header */
+    while (fgets(line, sizeof(line), fp))
+        if (line[0] != '\n' && line[0] != '\0') count++;
+
+    /* Second pass: read store_id (first CSV field) */
+    rewind(fp);
+    fgets(line, sizeof(line), fp); /* skip header */
+
+    g_store_ids = malloc(count * sizeof(int));
+    int idx = 0;
+    while (fgets(line, sizeof(line), fp) && idx < count) {
+        int id = atoi(line);  /* atoi stops at first non-digit (the comma) */
+        if (id > 0)
+            g_store_ids[idx++] = id;
+    }
+    fclose(fp);
+
+    g_num_stores = idx;
+
+    /* Sort so adjacent indices approximate geographic proximity */
+    qsort(g_store_ids, g_num_stores, sizeof(int), compare_int);
+
+    fprintf(stderr, "Store IDs: loaded %d real store IDs from %s (range %d–%d)\n",
+            g_num_stores, g_stores_csv, g_store_ids[0], g_store_ids[g_num_stores - 1]);
+}
+
+/* ========================================================================
  * Sampling helpers
  * ======================================================================== */
 
@@ -344,7 +399,7 @@ static void *generate_chunk(void *arg) {
 
     for (int c = ta->cust_start; c < ta->cust_end; c++) {
         int cid = c + 1;
-        int home_store = (cid % g_num_stores) + 1;
+        int home_idx = cid % g_num_stores;
         double tax_rate = g_state_tax[cid % NUM_STATES];
 
         int items = 0;
@@ -360,15 +415,16 @@ static void *generate_chunk(void *arg) {
             int left   = g_txns_per_customer - items;
             if (basket > left) basket = left;
 
-            /* Store: 90% home, 10% nearby ±50 */
-            int store;
+            /* Store: 90% home, 10% nearby ±50 (index offset in sorted store array) */
+            int store_idx;
             if (rng_double(&rng) < 0.90) {
-                store = home_store;
+                store_idx = home_idx;
             } else {
-                store = home_store + (int)(rng_next(&rng) % 101) - 50;
-                if (store < 1) store = 1;
-                if (store > g_num_stores) store = g_num_stores;
+                store_idx = home_idx + (int)(rng_next(&rng) % 101) - 50;
+                if (store_idx < 0) store_idx = 0;
+                if (store_idx >= g_num_stores) store_idx = g_num_stores - 1;
             }
+            int store = g_store_ids[store_idx];
 
             int hour = sample_hour(&rng, is_we);
 
@@ -440,8 +496,9 @@ int main(int argc, char *argv[]) {
     if (argc >= 2) g_num_customers     = atoi(argv[1]);
     if (argc >= 3) g_txns_per_customer = atoi(argv[2]);
     if (argc >= 4) g_num_products      = atoi(argv[3]);
-    if (argc >= 5) g_num_stores        = atoi(argv[4]);
+    /* arg 4 (num_stores) is ignored — real count comes from stores CSV */
     if (argc >= 6) strncpy(g_output_dir, argv[5], sizeof(g_output_dir) - 1);
+    if (argc >= 7) strncpy(g_stores_csv, argv[6], sizeof(g_stores_csv) - 1);
 
     int is_test = (g_num_customers < 10000);
 
@@ -463,6 +520,7 @@ int main(int argc, char *argv[]) {
 
     detect_compression();
     init_dates();
+    init_store_ids();
     init_product_prices();
     init_product_cdfs();
     init_hour_weights();
@@ -512,5 +570,6 @@ int main(int argc, char *argv[]) {
 
     free(g_product_prices);
     free(g_product_cdfs);
+    free(g_store_ids);
     return 0;
 }

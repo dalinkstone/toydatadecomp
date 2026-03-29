@@ -1,7 +1,7 @@
 # toydatadecomp — Retail Recommendation Engine Build System
 # Target: M4 Max MacBook Pro, 64GB RAM, 4TB SSD, macOS
 #
-# Scale: 10M customers × 10K products × 9K stores → 10B transactions
+# Scale: 10M customers × 12K products × 9K stores → 10B transactions
 # Model: Two-tower neural network for purchase prediction
 
 SHELL := /bin/zsh
@@ -13,6 +13,7 @@ CFLAGS := -O3 -march=native -Wall -Wextra -DACCELERATE_NEW_LAPACK
 # Output binaries
 TXN_GEN := src/generators/txn_generator
 VECDB_LIB := src/vecdb/vecdb.o
+VECDB_DYLIB := src/vecdb/vecdb.dylib
 VECDB_TEST := src/vecdb/test_vecdb
 
 .PHONY: install compile-c scrape-stores scrape-products gen-customers gen-transactions \
@@ -43,13 +44,16 @@ check-zstd:
 # --------------------------------------------------------------------------
 # compile-c: build the C transaction generator and vecdb
 # --------------------------------------------------------------------------
-compile-c: $(TXN_GEN) $(VECDB_TEST)
+compile-c: $(TXN_GEN) $(VECDB_TEST) $(VECDB_DYLIB)
 
 $(TXN_GEN): src/generators/txn_generator.c
 	$(CC) $(CFLAGS) -o $@ $< -lm -lpthread
 
 $(VECDB_LIB): src/vecdb/vecdb.c src/vecdb/vecdb.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(VECDB_DYLIB): src/vecdb/vecdb.c src/vecdb/vecdb.h
+	$(CC) $(CFLAGS) -shared -o $@ $< -framework Accelerate
 
 $(VECDB_TEST): src/vecdb/test_vecdb.c $(VECDB_LIB) src/vecdb/vecdb.h
 	$(CC) $(CFLAGS) -o $@ $< $(VECDB_LIB) -framework Accelerate -lm
@@ -67,7 +71,7 @@ gen-customers:
 	$(PYTHON) src/generators/gen_customers.py --count 10000000
 
 gen-transactions: $(TXN_GEN) check-zstd
-	./$(TXN_GEN)
+	./$(TXN_GEN) 10000000 1000 12000 0 data/synthetic/transactions data/real/stores.csv
 
 convert-parquet:
 	@echo "NOTE: This is optional. DuckDB reads .csv.zst natively with predicate pushdown."

@@ -186,9 +186,11 @@ def main(db_path: str, data_dir: str, materialize: bool) -> None:
     txn_pattern, reader_fn = detect_transaction_format(data_dir)
     con.execute("DROP VIEW IF EXISTS transactions")
     con.execute("DROP TABLE IF EXISTS transactions")
+    # ignore_errors handles truncated lines from interrupted zstd writes
+    extra_opts = ", ignore_errors=true" if reader_fn == "read_csv" else ""
     con.execute(f"""
         CREATE VIEW transactions AS
-        SELECT * FROM {reader_fn}('{txn_pattern}')
+        SELECT * FROM {reader_fn}('{txn_pattern}'{extra_opts})
     """)
     console.print(f"  transactions: VIEW via {reader_fn}('{txn_pattern}')")
 

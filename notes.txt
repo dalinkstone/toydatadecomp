@@ -1,0 +1,3 @@
+python src/db/load_duckdb.py --db-path data/db/cvs_analytics.duckdb --data-dir data
+
+python src/cli.py validate --db-path data/db/cvs_analytics.duckdb
