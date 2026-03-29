@@ -23,12 +23,16 @@ from rich.table import Table
 
 console = Console()
 
+# Conservative multipliers — deliberately modest to avoid over-projecting.
+# Grounded in CVS 10-K reality: P&CW gross margin compressing (21.7% -> 18.5%),
+# front store SSS volatile (-2.1% FY2024, +1.2% FY2025).
+# Better to underestimate and over-deliver.
 TIER_MULTIPLIERS = {
-    "coupon_loyalist": 1.2,
-    "coupon_curious": 1.1,
-    "organic_star": 1.3,
-    "hidden_gem": 1.0,
-    "unclassified": 0.8,
+    "coupon_loyalist": 1.10,    # Was 1.2 — these customers buy anyway, small uplift
+    "coupon_curious": 1.05,     # Was 1.1 — conversion is uncertain
+    "organic_star": 1.15,       # Was 1.3 — margin protection, not aggressive growth
+    "hidden_gem": 1.0,          # No change — unproven demand
+    "unclassified": 0.85,       # Was 0.8 — slight penalty, not harsh
 }
 
 TIER_ACTIONS = {
