@@ -13,6 +13,8 @@ Usage:
     python src/cli.py train
     python src/cli.py infer
     python src/cli.py validate
+    python src/cli.py simulate run --epochs 250 --runs 75
+    python src/cli.py simulate status
     python src/cli.py status
 """
 
@@ -296,6 +298,67 @@ def rank(db_path, model_dir, output_dir, top_k, chunk_size, device,
     if skip_recency_build:
         args.append("--skip-recency-build")
     _main(args, standalone_mode=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# simulate
+# ═══════════════════════════════════════════════════════════════════════
+
+@toydatadecomp.group()
+def simulate():
+    """Monte Carlo simulation of the recommendation feedback loop."""
+    pass
+
+
+@simulate.command("run")
+@click.option("--epochs", default=250, help="Epochs per simulation run.")
+@click.option("--runs", default=75, help="Number of Monte Carlo runs.")
+@click.option("--retrain-interval", default=10, help="Retrain every N epochs.")
+@click.option("--scale", default="demo", type=click.Choice(["demo", "full"]),
+              help="Scale: demo (10K customers) or full.")
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb")
+@click.option("--model-dir", default="data/model/")
+@click.option("--results-dir", default="data/results/")
+@click.option("--output-dir", default="data/results/simulation/")
+@click.option("--workers", default=0, type=int,
+              help="Worker processes (0=auto).")
+def simulate_run(epochs, runs, retrain_interval, scale, db_path, model_dir,
+                 results_dir, output_dir, workers):
+    """Run the Monte Carlo simulation."""
+    from simulation.monte_carlo import SimulationConfig, run_monte_carlo
+
+    if scale == "demo":
+        max_cid = 10_001
+    else:
+        import numpy as np
+        emb_path = os.path.join(model_dir, "customer_embeddings.npy")
+        if os.path.exists(emb_path):
+            max_cid = int(np.load(emb_path, mmap_mode="r").shape[0])
+        else:
+            max_cid = 10_001
+
+    config = SimulationConfig(
+        num_epochs=epochs,
+        num_runs=runs,
+        retrain_interval=retrain_interval,
+        max_customer_id=max_cid,
+        num_workers=workers,
+        db_path=db_path,
+        model_dir=model_dir,
+        results_dir=results_dir,
+        output_dir=output_dir,
+        workspace_dir=os.path.join(output_dir, "workspace"),
+    )
+    console.print("[bold]→ Running Monte Carlo simulation...[/bold]")
+    run_monte_carlo(config)
+
+
+@simulate.command("status")
+@click.option("--output-dir", default="data/results/simulation/")
+def simulate_status(output_dir):
+    """Show progress of an ongoing or completed simulation."""
+    from simulation.monte_carlo import show_status
+    show_status(output_dir)
 
 
 # ═══════════════════════════════════════════════════════════════════════

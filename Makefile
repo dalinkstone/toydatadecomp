@@ -18,7 +18,7 @@ VECDB_TEST := src/vecdb/test_vecdb
 
 .PHONY: install compile-c scrape-stores scrape-products gen-stores gen-customers \
         gen-transactions convert-parquet load-db train inference rank test validate \
-        full-pipeline full-pipeline-parquet demo status clean
+        simulate simulate-demo full-pipeline full-pipeline-parquet demo status clean
 
 # --------------------------------------------------------------------------
 # install: venv + deps + C compilation + zstd check
@@ -95,6 +95,21 @@ inference:
 
 rank:
 	$(PYTHON) src/ranking/decision_engine.py
+
+# --------------------------------------------------------------------------
+# Monte Carlo Simulation
+# --------------------------------------------------------------------------
+EPOCHS ?= 250
+RUNS ?= 75
+RETRAIN_INTERVAL ?= 10
+SCALE ?= demo
+
+simulate:
+	$(PYTHON) src/cli.py simulate run --epochs $(EPOCHS) --runs $(RUNS) \
+		--retrain-interval $(RETRAIN_INTERVAL) --scale $(SCALE)
+
+simulate-demo:
+	$(PYTHON) src/cli.py simulate run --epochs 50 --runs 10 --retrain-interval 10 --scale demo
 
 # --------------------------------------------------------------------------
 # Testing & validation
