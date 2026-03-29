@@ -118,7 +118,7 @@ class VecDB:
     def load(cls, path: str):
         instance = cls.__new__(cls)
         instance._lib = cls._load_lib()
-        instance._setup_signatures(instance)
+        instance._setup_signatures()
         instance._db = instance._lib.vecdb_load(path.encode())
         if not instance._db:
             raise RuntimeError(f"Failed to load VecDB from {path}")

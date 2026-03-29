@@ -273,25 +273,33 @@ def main(
 
     t0 = time.perf_counter()
     total_clips = 0
+    completed = 0
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Generating clips", total=num_batches)
+    try:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Generating clips", total=num_batches)
 
-        with multiprocessing.Pool(
-            processes=workers,
-            initializer=_init_worker,
-            initargs=(product_ids, product_weights, product_prices),
-        ) as pool:
-            for path, n_clips in pool.imap_unordered(_generate_batch, batch_args):
-                total_clips += n_clips
-                progress.advance(task)
+            with multiprocessing.Pool(
+                processes=workers,
+                initializer=_init_worker,
+                initargs=(product_ids, product_weights, product_prices),
+            ) as pool:
+                for path, n_clips in pool.imap_unordered(_generate_batch, batch_args):
+                    total_clips += n_clips
+                    completed += 1
+                    progress.advance(task)
+    except KeyboardInterrupt:
+        elapsed = time.perf_counter() - t0
+        console.print(f"\n[yellow]Interrupted after {completed}/{num_batches} batches "
+                      f"({total_clips:,} clips saved to {output_dir}/)[/yellow]")
+        return
 
     elapsed = time.perf_counter() - t0
 

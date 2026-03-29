@@ -16,9 +16,9 @@ VECDB_LIB := src/vecdb/vecdb.o
 VECDB_DYLIB := src/vecdb/vecdb.dylib
 VECDB_TEST := src/vecdb/test_vecdb
 
-.PHONY: install compile-c scrape-stores scrape-products gen-customers gen-transactions \
-        convert-parquet load-db train inference test validate \
-        full-pipeline full-pipeline-parquet clean
+.PHONY: install compile-c scrape-stores scrape-products gen-stores gen-customers \
+        gen-transactions convert-parquet load-db train inference test validate \
+        full-pipeline full-pipeline-parquet demo status clean
 
 # --------------------------------------------------------------------------
 # install: venv + deps + C compilation + zstd check
@@ -67,6 +67,10 @@ scrape-stores:
 scrape-products:
 	$(PYTHON) src/scrapers/scrape_products.py
 
+gen-stores:
+	@echo "Generating synthetic store locations (fallback)..."
+	$(PYTHON) src/generators/gen_stores.py
+
 gen-customers:
 	$(PYTHON) src/generators/gen_customers.py --count 10000000
 
@@ -96,18 +100,89 @@ test:
 	$(PYTHON) -m pytest tests/ -v
 
 validate:
-	$(PYTHON) src/cli.py validate
+	$(PYTHON) scripts/validate.py
+
+status:
+	$(PYTHON) src/cli.py status
 
 # --------------------------------------------------------------------------
 # Full pipelines
 # --------------------------------------------------------------------------
-full-pipeline: install scrape-stores scrape-products gen-customers gen-transactions load-db train inference validate
-	@echo "✓ Full pipeline complete (using .csv.zst directly)."
+#
+# Order: install → scrape-products (build mode, always works)
+#       → scrape-stores (best effort, falls back to gen-stores)
+#       → gen-customers → compile-c → gen-transactions
+#       → load-db → train → inference → validate
+#
+# NOTE: convert-parquet is NOT in the default pipeline.
+# DuckDB reads .csv.zst natively with predicate pushdown.
+# Use full-pipeline-parquet for faster repeat queries.
+#
+full-pipeline:
+	@SECONDS=0; \
+	$(MAKE) install && \
+	$(MAKE) scrape-products && \
+	( $(MAKE) scrape-stores || $(MAKE) gen-stores ) && \
+	$(MAKE) gen-customers && \
+	$(MAKE) compile-c && \
+	$(MAKE) gen-transactions && \
+	$(MAKE) load-db && \
+	$(MAKE) train && \
+	$(MAKE) inference && \
+	$(MAKE) validate && \
+	echo "" && \
+	echo "════════════════════════════════════════════════════════" && \
+	echo "✓ Full pipeline complete (using .csv.zst directly)." && \
+	echo "  Elapsed: $${SECONDS}s" && \
+	echo "════════════════════════════════════════════════════���═══" && \
+	$(MAKE) status
 
-full-pipeline-parquet: install scrape-stores scrape-products gen-customers gen-transactions convert-parquet load-db train inference validate
-	@echo "Removing .csv.zst files (Parquet conversion complete)..."
-	find data/synthetic/transactions -name '*.csv.zst' -delete
-	@echo "✓ Full pipeline complete (Parquet mode)."
+full-pipeline-parquet:
+	@SECONDS=0; \
+	$(MAKE) install && \
+	$(MAKE) scrape-products && \
+	( $(MAKE) scrape-stores || $(MAKE) gen-stores ) && \
+	$(MAKE) gen-customers && \
+	$(MAKE) compile-c && \
+	$(MAKE) gen-transactions && \
+	$(MAKE) convert-parquet && \
+	find data/synthetic/transactions -name '*.csv.zst' -delete && \
+	$(MAKE) load-db && \
+	$(MAKE) train && \
+	$(MAKE) inference && \
+	$(MAKE) validate && \
+	echo "" && \
+	echo "════════════════════════════════════════════════════════" && \
+	echo "✓ Full pipeline complete (Parquet mode)." && \
+	echo "  Elapsed: $${SECONDS}s" && \
+	echo "════════════════════════════════════════════════════════" && \
+	$(MAKE) status
+
+# --------------------------------------------------------------------------
+# Demo: 1/1000th scale (~2 min total)
+#   10K customers × 100 txns each = 1M transactions
+# --------------------------------------------------------------------------
+demo:
+	@SECONDS=0; \
+	echo "═══ Demo Pipeline (1/1000th scale) ═══" && \
+	echo "  10K customers, 100 txns/customer, 1M total rows" && \
+	echo "" && \
+	$(MAKE) install && \
+	$(MAKE) scrape-products && \
+	( $(MAKE) scrape-stores || $(MAKE) gen-stores ) && \
+	$(PYTHON) src/generators/gen_customers.py --count 10000 --test && \
+	$(MAKE) compile-c && \
+	./$(TXN_GEN) 10000 100 12000 0 data/synthetic/transactions data/real/stores.csv && \
+	$(MAKE) load-db && \
+	$(PYTHON) src/ml/train.py --epochs 2 --sample-pct 100.0 && \
+	$(PYTHON) src/ml/inference.py && \
+	$(MAKE) validate && \
+	echo "" && \
+	echo "════════════════════════════════════════════════════════" && \
+	echo "✓ Demo pipeline complete." && \
+	echo "  Elapsed: $${SECONDS}s" && \
+	echo "════════════════════════════════════════════════════════" && \
+	$(MAKE) status
 
 # --------------------------------------------------------------------------
 # Cleanup
@@ -115,7 +190,9 @@ full-pipeline-parquet: install scrape-stores scrape-products gen-customers gen-t
 clean:
 	rm -rf data/real/*.csv data/real/*.json
 	rm -rf data/synthetic/customers/*.csv data/synthetic/customers/*.csv.zst data/synthetic/customers/*.parquet
+	rm -rf data/synthetic/coupon_clips/*.parquet
 	rm -rf data/synthetic/transactions/*.csv data/synthetic/transactions/*.csv.zst data/synthetic/transactions/*.parquet
 	rm -rf data/db/*.duckdb data/db/*.duckdb.wal
-	rm -f $(TXN_GEN) $(VECDB_LIB) $(VECDB_TEST)
+	rm -rf data/model/ data/results/
+	rm -f $(TXN_GEN) $(VECDB_LIB) $(VECDB_TEST) $(VECDB_DYLIB)
 	@echo "✓ Cleaned all generated data and binaries."

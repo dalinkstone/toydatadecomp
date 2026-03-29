@@ -221,20 +221,29 @@ def main(
     )
 
     t0 = time.perf_counter()
+    completed = 0
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Generating", total=num_batches)
+    try:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Generating", total=num_batches)
 
-        with multiprocessing.Pool(processes=workers) as pool:
-            for _path in pool.imap_unordered(_generate_batch, batch_args):
-                progress.advance(task)
+            with multiprocessing.Pool(processes=workers) as pool:
+                for _path in pool.imap_unordered(_generate_batch, batch_args):
+                    completed += 1
+                    progress.advance(task)
+    except KeyboardInterrupt:
+        elapsed = time.perf_counter() - t0
+        done_rows = completed * batch_size
+        console.print(f"\n[yellow]Interrupted after {completed}/{num_batches} batches "
+                      f"({done_rows:,} customers saved to {output_dir}/)[/yellow]")
+        return
 
     elapsed = time.perf_counter() - t0
     rows_per_sec = count / elapsed
