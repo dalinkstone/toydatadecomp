@@ -249,6 +249,56 @@ def infer(db_path, model_dir, output_dir, mode, top_k, chunk_size,
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# rank
+# ═══════════════════════════════════════════════════════════════════════
+
+@toydatadecomp.command()
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb")
+@click.option("--model-dir", default="data/model/")
+@click.option("--output-dir", default="data/results/")
+@click.option("--top-k", default=10, help="Recommendations per customer.")
+@click.option("--chunk-size", default=50_000, type=int,
+              help="Customers per processing chunk.")
+@click.option("--device", default="auto",
+              type=click.Choice(["auto", "mps", "cpu"]))
+@click.option("--recency-window", default=5, type=int,
+              help="Suppress last N distinct products purchased.")
+@click.option("--recency-decay", default=0.5, type=float,
+              help="Score multiplier for recently-purchased products.")
+@click.option("--max-same-category", default=3, type=int,
+              help="Max items from the same category in top-K.")
+@click.option("--margin-weight", default=0.3, type=float,
+              help="Margin boost weight: score *= 1 + margin_pct * weight.")
+@click.option("--coupon-boost", default=0.15, type=float,
+              help="Score multiplier for coupon-eligible products.")
+@click.option("--demo", is_flag=True,
+              help="Demo mode: process only first 10K customers.")
+@click.option("--skip-recency-build", is_flag=True,
+              help="Skip recency materialization if table exists.")
+def rank(db_path, model_dir, output_dir, top_k, chunk_size, device,
+         recency_window, recency_decay, max_same_category, margin_weight,
+         coupon_boost, demo, skip_recency_build):
+    """Rank and select per-customer recommendations with business logic."""
+    from ranking.decision_engine import main as _main
+    console.print("[bold]→ Running decision & ranking layer...[/bold]")
+    args = [
+        "--db-path", db_path, "--model-dir", model_dir,
+        "--output-dir", output_dir, "--top-k", str(top_k),
+        "--chunk-size", str(chunk_size), "--device", device,
+        "--recency-window", str(recency_window),
+        "--recency-decay", str(recency_decay),
+        "--max-same-category", str(max_same_category),
+        "--margin-weight", str(margin_weight),
+        "--coupon-boost", str(coupon_boost),
+    ]
+    if demo:
+        args.append("--demo")
+    if skip_recency_build:
+        args.append("--skip-recency-build")
+    _main(args, standalone_mode=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # validate
 # ═══════════════════════════════════════════════════════════════════════
 

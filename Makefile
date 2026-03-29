@@ -17,7 +17,7 @@ VECDB_DYLIB := src/vecdb/vecdb.dylib
 VECDB_TEST := src/vecdb/test_vecdb
 
 .PHONY: install compile-c scrape-stores scrape-products gen-stores gen-customers \
-        gen-transactions convert-parquet load-db train inference test validate \
+        gen-transactions convert-parquet load-db train inference rank test validate \
         full-pipeline full-pipeline-parquet demo status clean
 
 # --------------------------------------------------------------------------
@@ -93,6 +93,9 @@ train:
 inference:
 	$(PYTHON) src/ml/inference.py
 
+rank:
+	$(PYTHON) src/ranking/decision_engine.py
+
 # --------------------------------------------------------------------------
 # Testing & validation
 # --------------------------------------------------------------------------
@@ -112,7 +115,7 @@ status:
 # Order: install → scrape-products (build mode, always works)
 #       → scrape-stores (best effort, falls back to gen-stores)
 #       → gen-customers → compile-c → gen-transactions
-#       → load-db → train → inference → validate
+#       → load-db → train → inference → rank → validate
 #
 # NOTE: convert-parquet is NOT in the default pipeline.
 # DuckDB reads .csv.zst natively with predicate pushdown.
@@ -129,6 +132,7 @@ full-pipeline:
 	$(MAKE) load-db && \
 	$(MAKE) train && \
 	$(MAKE) inference && \
+	$(MAKE) rank && \
 	$(MAKE) validate && \
 	echo "" && \
 	echo "════════════════════════════════════════════════════════" && \
@@ -150,6 +154,7 @@ full-pipeline-parquet:
 	$(MAKE) load-db && \
 	$(MAKE) train && \
 	$(MAKE) inference && \
+	$(MAKE) rank && \
 	$(MAKE) validate && \
 	echo "" && \
 	echo "════════════════════════════════════════════════════════" && \
@@ -176,6 +181,7 @@ demo:
 	$(MAKE) load-db && \
 	$(PYTHON) src/ml/train.py --epochs 2 --sample-pct 100.0 && \
 	$(PYTHON) src/ml/inference.py && \
+	$(PYTHON) src/ranking/decision_engine.py --demo && \
 	$(MAKE) validate && \
 	echo "" && \
 	echo "════════════════════════════════════════════════════════" && \
