@@ -94,10 +94,8 @@ class TransactionDataset(Dataset):
         pid = int(self.product_ids[idx])
         cust = self._customer_feats(cid)
         pos = self._product_feats(pid)
-        negs = []
-        for _ in range(self.neg_samples):
-            neg_pid = int(self.product_id_list[np.random.randint(len(self.product_id_list))])
-            negs.append(self._product_feats(neg_pid))
+        neg_indices = np.random.randint(len(self.product_id_list), size=self.neg_samples)
+        negs = [self._product_feats(int(self.product_id_list[i])) for i in neg_indices]
         return cust, pos, negs
 
 
@@ -200,7 +198,7 @@ def extract_embeddings(model, customer_features, product_lookup,
             "organic_purchase_ratio": torch.tensor([x["organic_purchase_ratio"] for x in items], dtype=torch.float32),
         }
 
-    with torch.no_grad():
+    with torch.inference_mode():
         prod_batch = move_to(stack_product_list(prod_feats_list), device)
         prod_embeddings = model.product_tower(**prod_batch).cpu().numpy()
 
@@ -212,30 +210,39 @@ def extract_embeddings(model, customer_features, product_lookup,
     np.save(os.path.join(output_dir, "product_ids.npy"),
             np.array(product_ids, dtype=np.int64))
 
-    # Customer embeddings: in chunks
-    console.print("  Customer embeddings (chunked)...")
-    max_cid = customer_features["age"].shape[0]  # 10M+1
+    # Customer embeddings: in chunks (vectorized — bypasses per-sample dict construction)
+    console.print("  Customer embeddings (chunked, vectorized)...")
+    cf = customer_features
+    max_cid = cf["age"].shape[0]  # 10M+1
     chunk_size = 100_000
     cust_embeddings = np.zeros((max_cid, 256), dtype=np.float32)
 
-    with torch.no_grad():
+    def _vnorm(arr, key):
+        """Vectorized normalization matching TransactionDataset._norm."""
+        mean, std = norm_stats.get(key, (0.0, 1.0))
+        return ((arr - mean) / std).astype(np.float32)
+
+    with torch.inference_mode():
         for start in range(1, max_cid, chunk_size):
             end = min(start + chunk_size, max_cid)
-            cids = np.arange(start, end)
-            cust_feats_list = [dummy_ds._customer_feats(int(c)) for c in cids]
+            n = end - start
+
+            # Gender one-hot: (N, 3) from integer index
+            gender_idx = cf["gender"][start:end].astype(np.int64)
+            gender_oh = np.zeros((n, 3), dtype=np.float32)
+            gender_oh[np.arange(n), np.clip(gender_idx, 0, 2)] = 1.0
 
             batch = {
-                "customer_id": torch.tensor([x["customer_id"] for x in cust_feats_list], dtype=torch.long),
-                "age": torch.tensor([x["age"] for x in cust_feats_list], dtype=torch.float32),
-                "gender_onehot": torch.tensor([x["gender_onehot"] for x in cust_feats_list], dtype=torch.float32),
-                "state_id": torch.tensor([x["state_id"] for x in cust_feats_list], dtype=torch.long),
-                "is_student": torch.tensor([x["is_student"] for x in cust_feats_list], dtype=torch.float32),
-                "total_spend": torch.tensor([x["total_spend"] for x in cust_feats_list], dtype=torch.float32),
-                "coupon_engagement": torch.tensor([x["coupon_engagement"] for x in cust_feats_list], dtype=torch.float32),
-                "coupon_redemption_rate": torch.tensor([x["coupon_redemption_rate"] for x in cust_feats_list], dtype=torch.float32),
-                "avg_basket_size": torch.tensor([x["avg_basket_size"] for x in cust_feats_list], dtype=torch.float32),
+                "customer_id": torch.arange(start, end, dtype=torch.long, device=device),
+                "age": torch.from_numpy(_vnorm(cf["age"][start:end], "age")).to(device),
+                "gender_onehot": torch.from_numpy(gender_oh).to(device),
+                "state_id": torch.from_numpy(cf["state"][start:end].astype(np.int64)).to(device),
+                "is_student": torch.from_numpy(cf["is_student"][start:end].copy()).to(device),
+                "total_spend": torch.from_numpy(_vnorm(cf["total_spend"][start:end], "total_spend")).to(device),
+                "coupon_engagement": torch.from_numpy(cf["coupon_engagement_score"][start:end].copy()).to(device),
+                "coupon_redemption_rate": torch.from_numpy(cf["coupon_redemption_rate"][start:end].copy()).to(device),
+                "avg_basket_size": torch.from_numpy(_vnorm(cf["avg_basket_size"][start:end], "avg_basket_size")).to(device),
             }
-            batch = move_to(batch, device)
             chunk_emb = model.customer_tower(**batch).cpu().numpy()
             cust_embeddings[start:end] = chunk_emb
 
@@ -368,7 +375,7 @@ def main(db_path: str, epochs: int, batch_size: int, lr: float,
                 neg_batches = [move_to(nb, dev) for nb in neg_batches]
                 pos_margin = pos_margin.to(dev) if margin_weight else None
 
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
                 pos_scores, neg_scores = model(cust_batch, pos_batch, neg_batches)
                 loss = TwoTowerModel.compute_loss(pos_scores, neg_scores, pos_margin)
                 loss.backward()
