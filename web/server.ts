@@ -16,4 +16,4 @@ Bun.serve({
   },
 });
 
-console.log("CVS Analytics Dashboard → http://localhost:3000");
+console.log("Data Decomp Analytics Dashboard → http://localhost:3000");

@@ -240,7 +240,19 @@ class VectorizedConsumerSimulator:
                     ).astype(np.float32)
 
             # ── Purchase probabilities ───────────────────────────────
-            base_p = np.clip(cs, 0.0, 1.0).astype(np.float32)
+            # Calibrate affinity scores → realistic conversion rates.
+            # Model scores are cosine similarities (~0.0 to ~1.0 after
+            # margin boost).  Raw clip to [0,1] gives ~97% hit rate —
+            # unrealistic.  Sigmoid calibration maps:
+            #   score 0.0 → ~0.2%   (no affinity)
+            #   score 0.3 → ~1.7%   (weak affinity)
+            #   score 0.5 → ~5.0%   (moderate affinity)
+            #   score 0.7 → ~8.3%   (strong affinity)
+            #   score 1.0 → ~9.8%   (maximum affinity)
+            # With 10 recs at ~5% each: P(≥1 purchase) ≈ 40%, realistic.
+            base_p = (
+                0.10 / (1.0 + np.exp(-8.0 * (cs - 0.5)))
+            ).astype(np.float32)
             base_p *= self.seasonal_table[cc, month_idx]
             np.minimum(base_p, 1.0, out=base_p)
 
@@ -305,9 +317,10 @@ class VectorizedConsumerSimulator:
 
         # ── Organic purchases (approximate revenue, no large temps) ──
         org_total, org_rev, org_mask = self._organic_purchases()
-        customer_purchased |= org_mask
 
-        # ── Dormancy ─────────────────────────────────────────────────
+        # ── Dormancy (based on rec + halo ONLY, not organic) ─────────
+        # Organic purchases happen regardless of recommendations, so
+        # they should not mask recommendation fatigue / dormancy.
         self.dormant_epochs[customer_purchased] = 0
         self.dormant_epochs[~customer_purchased] += 1
 

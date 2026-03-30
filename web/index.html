@@ -3,46 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CVS Health | Analytics Dashboard</title>
+<title>Data Decomp | Analytics Dashboard</title>
 <style>
-/* ===== CVS Brand System ===== */
+/* ===== DD Brand System ===== */
 :root {
-  --cvs-red: #CC0000;
-  --cvs-red-dark: #A30000;
-  --cvs-red-light: #E8384F;
-  --cvs-heart: #CC0000;
-  --cvs-black: #1A1A1A;
-  --cvs-gray-900: #333333;
-  --cvs-gray-700: #555555;
-  --cvs-gray-500: #888888;
-  --cvs-gray-300: #CCCCCC;
-  --cvs-gray-100: #F4F4F4;
-  --cvs-white: #FFFFFF;
-  --cvs-bg: #F7F7F7;
-  --cvs-green: #008A00;
-  --cvs-blue: #0066CC;
-  --cvs-orange: #E87722;
-  --cvs-shadow: 0 1px 3px rgba(0,0,0,0.1);
-  --cvs-shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
-  --cvs-radius: 8px;
-  --cvs-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --dd-red: #CC0000;
+  --dd-red-dark: #A30000;
+  --dd-red-light: #E8384F;
+  --dd-heart: #CC0000;
+  --dd-black: #1A1A1A;
+  --dd-gray-900: #333333;
+  --dd-gray-700: #555555;
+  --dd-gray-500: #888888;
+  --dd-gray-300: #CCCCCC;
+  --dd-gray-100: #F4F4F4;
+  --dd-white: #FFFFFF;
+  --dd-bg: #F7F7F7;
+  --dd-green: #008A00;
+  --dd-blue: #0066CC;
+  --dd-orange: #E87722;
+  --dd-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --dd-shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+  --dd-radius: 8px;
+  --dd-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
   --max-w: 1280px;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: var(--cvs-font);
-  background: var(--cvs-bg);
-  color: var(--cvs-black);
+  font-family: var(--dd-font);
+  background: var(--dd-bg);
+  color: var(--dd-black);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
 /* ===== Top Banner ===== */
 .top-banner {
-  background: var(--cvs-red);
-  color: var(--cvs-white);
+  background: var(--dd-red);
+  color: var(--dd-white);
   text-align: center;
   padding: 6px 16px;
   font-size: 13px;
@@ -50,10 +50,10 @@ body {
   letter-spacing: 0.02em;
 }
 
-/* ===== Header (CVS Nav) ===== */
+/* ===== Header (Main Nav) ===== */
 .header {
-  background: var(--cvs-white);
-  border-bottom: 1px solid var(--cvs-gray-300);
+  background: var(--dd-white);
+  border-bottom: 1px solid var(--dd-gray-300);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -84,16 +84,16 @@ body {
 .logo-text {
   font-size: 22px;
   font-weight: 800;
-  color: var(--cvs-red);
+  color: var(--dd-red);
   letter-spacing: -0.5px;
 }
 
 .logo-sub {
   font-size: 11px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   font-weight: 400;
   margin-left: 8px;
-  border-left: 1px solid var(--cvs-gray-300);
+  border-left: 1px solid var(--dd-gray-300);
   padding-left: 8px;
 }
 
@@ -107,16 +107,16 @@ body {
 .search-bar input {
   width: 100%;
   padding: 10px 16px 10px 40px;
-  border: 2px solid var(--cvs-gray-300);
+  border: 2px solid var(--dd-gray-300);
   border-radius: 24px;
   font-size: 14px;
   outline: none;
   transition: border-color 0.2s;
-  font-family: var(--cvs-font);
+  font-family: var(--dd-font);
 }
 
 .search-bar input:focus {
-  border-color: var(--cvs-red);
+  border-color: var(--dd-red);
 }
 
 .search-bar svg {
@@ -124,7 +124,7 @@ body {
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
 }
 
 .header-actions {
@@ -140,20 +140,20 @@ body {
   align-items: center;
   gap: 2px;
   text-decoration: none;
-  color: var(--cvs-gray-700);
+  color: var(--dd-gray-700);
   font-size: 11px;
   font-weight: 500;
   cursor: pointer;
 }
 
-.header-link:hover { color: var(--cvs-red); }
+.header-link:hover { color: var(--dd-red); }
 
 .header-link svg { width: 22px; height: 22px; }
 
-/* ===== Navigation Tabs (CVS-style) ===== */
+/* ===== Navigation Tabs ===== */
 .nav-tabs {
-  background: var(--cvs-white);
-  border-bottom: 2px solid var(--cvs-gray-100);
+  background: var(--dd-white);
+  border-bottom: 2px solid var(--dd-gray-100);
 }
 
 .nav-tabs-inner {
@@ -170,7 +170,7 @@ body {
   padding: 14px 20px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--cvs-gray-700);
+  color: var(--dd-gray-700);
   text-decoration: none;
   border-bottom: 3px solid transparent;
   cursor: pointer;
@@ -180,12 +180,12 @@ body {
 }
 
 .nav-tab:hover {
-  color: var(--cvs-red);
+  color: var(--dd-red);
 }
 
 .nav-tab.active {
-  color: var(--cvs-red);
-  border-bottom-color: var(--cvs-red);
+  color: var(--dd-red);
+  border-bottom-color: var(--dd-red);
 }
 
 /* ===== Main Content ===== */
@@ -198,11 +198,11 @@ body {
 .tab-content { display: none; }
 .tab-content.active { display: block; }
 
-/* ===== Hero Banner (CVS homepage style) ===== */
+/* ===== Hero Banner ===== */
 .hero {
-  background: linear-gradient(135deg, var(--cvs-red) 0%, var(--cvs-red-dark) 100%);
-  color: var(--cvs-white);
-  border-radius: var(--cvs-radius);
+  background: linear-gradient(135deg, var(--dd-red) 0%, var(--dd-red-dark) 100%);
+  color: var(--dd-white);
+  border-radius: var(--dd-radius);
   padding: 40px 48px;
   margin-bottom: 24px;
   position: relative;
@@ -234,7 +234,7 @@ body {
   line-height: 1.6;
 }
 
-/* ===== KPI Cards (mimics CVS deals grid) ===== */
+/* ===== KPI Cards ===== */
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -243,21 +243,21 @@ body {
 }
 
 .kpi-card {
-  background: var(--cvs-white);
-  border-radius: var(--cvs-radius);
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
   padding: 20px 24px;
-  box-shadow: var(--cvs-shadow);
-  border-left: 4px solid var(--cvs-red);
+  box-shadow: var(--dd-shadow);
+  border-left: 4px solid var(--dd-red);
 }
 
-.kpi-card.green { border-left-color: var(--cvs-green); }
-.kpi-card.blue { border-left-color: var(--cvs-blue); }
-.kpi-card.orange { border-left-color: var(--cvs-orange); }
+.kpi-card.green { border-left-color: var(--dd-green); }
+.kpi-card.blue { border-left-color: var(--dd-blue); }
+.kpi-card.orange { border-left-color: var(--dd-orange); }
 
 .kpi-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 4px;
@@ -266,13 +266,13 @@ body {
 .kpi-value {
   font-size: 28px;
   font-weight: 800;
-  color: var(--cvs-black);
+  color: var(--dd-black);
   letter-spacing: -0.5px;
 }
 
 .kpi-sub {
   font-size: 12px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   margin-top: 4px;
 }
 
@@ -282,32 +282,32 @@ body {
   margin-top: 4px;
 }
 
-.kpi-change.up { color: var(--cvs-green); }
-.kpi-change.down { color: var(--cvs-red); }
+.kpi-change.up { color: var(--dd-green); }
+.kpi-change.down { color: var(--dd-red); }
 
-/* ===== Data Tables (CVS clean style) ===== */
+/* ===== Data Tables ===== */
 .panel {
-  background: var(--cvs-white);
-  border-radius: var(--cvs-radius);
-  box-shadow: var(--cvs-shadow);
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  box-shadow: var(--dd-shadow);
   margin-bottom: 24px;
   overflow: hidden;
 }
 
 .panel-header {
   padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--cvs-gray-100);
+  border-bottom: 1px solid var(--dd-gray-100);
 }
 
 .panel-header h2 {
   font-size: 18px;
   font-weight: 700;
-  color: var(--cvs-black);
+  color: var(--dd-black);
 }
 
 .panel-header p {
   font-size: 13px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   margin-top: 2px;
 }
 
@@ -321,11 +321,11 @@ table {
 }
 
 thead th {
-  background: var(--cvs-gray-100);
+  background: var(--dd-gray-100);
   padding: 10px 16px;
   text-align: left;
   font-weight: 700;
-  color: var(--cvs-gray-700);
+  color: var(--dd-gray-700);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -337,15 +337,15 @@ thead th.right, td.right { text-align: right; }
 
 tbody td {
   padding: 10px 16px;
-  border-bottom: 1px solid var(--cvs-gray-100);
-  color: var(--cvs-gray-900);
+  border-bottom: 1px solid var(--dd-gray-100);
+  color: var(--dd-gray-900);
 }
 
 tbody tr:hover { background: #FAFAFA; }
 
 tbody tr:last-child td { border-bottom: none; }
 
-/* ===== Product Cards (CVS shop style) ===== */
+/* ===== Product Cards ===== */
 .product-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -354,16 +354,16 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .product-card {
-  background: var(--cvs-white);
-  border-radius: var(--cvs-radius);
-  box-shadow: var(--cvs-shadow);
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  box-shadow: var(--dd-shadow);
   padding: 16px;
   display: flex;
   flex-direction: column;
   transition: box-shadow 0.2s;
 }
 
-.product-card:hover { box-shadow: var(--cvs-shadow-lg); }
+.product-card:hover { box-shadow: var(--dd-shadow-lg); }
 
 .product-badge {
   display: inline-block;
@@ -376,29 +376,29 @@ tbody tr:last-child td { border-bottom: none; }
   width: fit-content;
 }
 
-.badge-loyalist { background: #FDECEA; color: var(--cvs-red); }
-.badge-organic { background: #E8F5E9; color: var(--cvs-green); }
-.badge-hidden { background: #FFF3E0; color: var(--cvs-orange); }
-.badge-curious { background: #E3F2FD; color: var(--cvs-blue); }
+.badge-loyalist { background: #FDECEA; color: var(--dd-red); }
+.badge-organic { background: #E8F5E9; color: var(--dd-green); }
+.badge-hidden { background: #FFF3E0; color: var(--dd-orange); }
+.badge-curious { background: #E3F2FD; color: var(--dd-blue); }
 
 .product-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--cvs-black);
+  color: var(--dd-black);
   margin-bottom: 4px;
   line-height: 1.3;
 }
 
 .product-brand {
   font-size: 12px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   margin-bottom: 8px;
 }
 
 .product-price {
   font-size: 20px;
   font-weight: 800;
-  color: var(--cvs-red);
+  color: var(--dd-red);
 }
 
 .product-price .cents {
@@ -408,14 +408,14 @@ tbody tr:last-child td { border-bottom: none; }
 
 .product-meta {
   font-size: 11px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   margin-top: 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-/* ===== Coupon Cards (ExtraCare style) ===== */
+/* ===== Coupon Cards ===== */
 .coupon-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -424,34 +424,34 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .coupon-card {
-  background: var(--cvs-white);
-  border-radius: var(--cvs-radius);
-  box-shadow: var(--cvs-shadow);
-  border: 2px dashed var(--cvs-gray-300);
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  box-shadow: var(--dd-shadow);
+  border: 2px dashed var(--dd-gray-300);
   padding: 20px;
   position: relative;
   transition: border-color 0.2s;
 }
 
-.coupon-card:hover { border-color: var(--cvs-red); }
+.coupon-card:hover { border-color: var(--dd-red); }
 
 .coupon-value {
   font-size: 32px;
   font-weight: 900;
-  color: var(--cvs-red);
+  color: var(--dd-red);
   margin-bottom: 4px;
 }
 
 .coupon-desc {
   font-size: 14px;
   font-weight: 600;
-  color: var(--cvs-black);
+  color: var(--dd-black);
   margin-bottom: 4px;
 }
 
 .coupon-detail {
   font-size: 12px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   margin-bottom: 12px;
 }
 
@@ -459,30 +459,30 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex;
   gap: 16px;
   font-size: 11px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
 }
 
 .coupon-stat-val {
   font-weight: 700;
-  color: var(--cvs-gray-900);
+  color: var(--dd-gray-900);
 }
 
 .btn-clip {
   position: absolute;
   top: 16px;
   right: 16px;
-  background: var(--cvs-red);
-  color: var(--cvs-white);
+  background: var(--dd-red);
+  color: var(--dd-white);
   border: none;
   border-radius: 20px;
   padding: 6px 16px;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  font-family: var(--cvs-font);
+  font-family: var(--dd-font);
 }
 
-.btn-clip:hover { background: var(--cvs-red-dark); }
+.btn-clip:hover { background: var(--dd-red-dark); }
 
 /* ===== Bar Charts (Pure CSS) ===== */
 .bar-chart {
@@ -502,7 +502,7 @@ tbody tr:last-child td { border-bottom: none; }
   width: 140px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--cvs-gray-700);
+  color: var(--dd-gray-700);
   text-align: right;
   flex-shrink: 0;
 }
@@ -510,7 +510,7 @@ tbody tr:last-child td { border-bottom: none; }
 .bar-track {
   flex: 1;
   height: 24px;
-  background: var(--cvs-gray-100);
+  background: var(--dd-gray-100);
   border-radius: 4px;
   overflow: hidden;
   position: relative;
@@ -523,16 +523,16 @@ tbody tr:last-child td { border-bottom: none; }
   min-width: 2px;
 }
 
-.bar-fill.red { background: var(--cvs-red); }
-.bar-fill.green { background: var(--cvs-green); }
-.bar-fill.blue { background: var(--cvs-blue); }
-.bar-fill.orange { background: var(--cvs-orange); }
+.bar-fill.red { background: var(--dd-red); }
+.bar-fill.green { background: var(--dd-green); }
+.bar-fill.blue { background: var(--dd-blue); }
+.bar-fill.orange { background: var(--dd-orange); }
 
 .bar-val {
   width: 80px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--cvs-gray-900);
+  color: var(--dd-gray-900);
   flex-shrink: 0;
 }
 
@@ -545,21 +545,21 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .scenario-card {
-  background: var(--cvs-white);
-  border-radius: var(--cvs-radius);
-  box-shadow: var(--cvs-shadow);
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  box-shadow: var(--dd-shadow);
   overflow: hidden;
 }
 
 .scenario-header {
   padding: 20px 24px;
-  color: var(--cvs-white);
+  color: var(--dd-white);
   font-weight: 700;
   font-size: 16px;
 }
 
-.scenario-header.conservative { background: var(--cvs-blue); }
-.scenario-header.moderate { background: var(--cvs-green); }
+.scenario-header.conservative { background: var(--dd-blue); }
+.scenario-header.moderate { background: var(--dd-green); }
 
 .scenario-body {
   padding: 20px 24px;
@@ -569,17 +569,17 @@ tbody tr:last-child td { border-bottom: none; }
   display: flex;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid var(--cvs-gray-100);
+  border-bottom: 1px solid var(--dd-gray-100);
   font-size: 13px;
 }
 
 .scenario-row:last-child { border-bottom: none; font-weight: 700; }
-.scenario-row .label { color: var(--cvs-gray-700); }
-.scenario-row .value { font-weight: 700; color: var(--cvs-black); }
+.scenario-row .label { color: var(--dd-gray-700); }
+.scenario-row .value { font-weight: 700; color: var(--dd-black); }
 
 /* ===== Callout Boxes ===== */
 .callout {
-  border-radius: var(--cvs-radius);
+  border-radius: var(--dd-radius);
   padding: 16px 20px;
   margin: 16px 0;
   font-size: 13px;
@@ -588,17 +588,17 @@ tbody tr:last-child td { border-bottom: none; }
 
 .callout.warning {
   background: #FFF8E1;
-  border-left: 4px solid var(--cvs-orange);
+  border-left: 4px solid var(--dd-orange);
 }
 
 .callout.info {
   background: #E3F2FD;
-  border-left: 4px solid var(--cvs-blue);
+  border-left: 4px solid var(--dd-blue);
 }
 
 .callout.success {
   background: #E8F5E9;
-  border-left: 4px solid var(--cvs-green);
+  border-left: 4px solid var(--dd-green);
 }
 
 .callout strong { font-weight: 700; }
@@ -619,10 +619,10 @@ tbody tr:last-child td { border-bottom: none; }
   .bar-label { width: 80px; font-size: 11px; }
 }
 
-/* ===== Footer (CVS style) ===== */
+/* ===== Footer ===== */
 .footer {
-  background: var(--cvs-gray-900);
-  color: var(--cvs-gray-300);
+  background: var(--dd-gray-900);
+  color: var(--dd-gray-300);
   padding: 40px 24px 24px;
   margin-top: 48px;
 }
@@ -640,7 +640,7 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .footer h4 {
-  color: var(--cvs-white);
+  color: var(--dd-white);
   font-size: 14px;
   font-weight: 700;
   margin-bottom: 12px;
@@ -648,19 +648,19 @@ tbody tr:last-child td { border-bottom: none; }
 
 .footer a {
   display: block;
-  color: var(--cvs-gray-300);
+  color: var(--dd-gray-300);
   text-decoration: none;
   font-size: 13px;
   padding: 3px 0;
 }
 
-.footer a:hover { color: var(--cvs-white); }
+.footer a:hover { color: var(--dd-white); }
 
 .footer-bottom {
-  border-top: 1px solid var(--cvs-gray-700);
+  border-top: 1px solid var(--dd-gray-700);
   padding-top: 20px;
   font-size: 12px;
-  color: var(--cvs-gray-500);
+  color: var(--dd-gray-500);
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
@@ -680,7 +680,7 @@ tbody tr:last-child td { border-bottom: none; }
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--cvs-gray-700);
+  color: var(--dd-gray-700);
 }
 
 .tier-dot {
@@ -691,9 +691,9 @@ tbody tr:last-child td { border-bottom: none; }
 
 /* ===== Inline sparkline ===== */
 .trend-arrow { font-size: 14px; }
-.trend-arrow.up { color: var(--cvs-green); }
-.trend-arrow.down { color: var(--cvs-red); }
-.trend-arrow.flat { color: var(--cvs-gray-500); }
+.trend-arrow.up { color: var(--dd-green); }
+.trend-arrow.down { color: var(--dd-red); }
+.trend-arrow.flat { color: var(--dd-gray-500); }
 </style>
 </head>
 <body>
@@ -707,12 +707,15 @@ tbody tr:last-child td { border-bottom: none; }
 <header class="header">
   <div class="header-inner">
     <a class="logo" href="#">
-      <!-- CVS Heart SVG -->
+      <!-- DD Analytics Icon -->
       <svg class="logo-heart" viewBox="0 0 40 36" fill="none">
-        <path d="M20 36L3.4 19.4C-2.5 13.5-1 4.5 6 1.5 10.5-0.5 15.5 1 20 6 24.5 1 29.5-0.5 34 1.5 41 4.5 42.5 13.5 36.6 19.4L20 36Z" fill="#CC0000"/>
+        <rect x="2" y="20" width="8" height="14" rx="1.5" fill="#CC0000"/>
+        <rect x="13" y="12" width="8" height="22" rx="1.5" fill="#CC0000"/>
+        <rect x="24" y="4" width="8" height="30" rx="1.5" fill="#CC0000"/>
+        <line x1="0" y1="35" x2="40" y2="35" stroke="#CC0000" stroke-width="2"/>
       </svg>
-      <span class="logo-text">CVS</span>
-      <span class="logo-sub">Health Analytics</span>
+      <span class="logo-text">DD</span>
+      <span class="logo-sub">Data Decomp</span>
     </a>
 
     <div class="search-bar">
@@ -742,7 +745,7 @@ tbody tr:last-child td { border-bottom: none; }
   <div class="nav-tabs-inner">
     <a class="nav-tab active" data-tab="dashboard">Dashboard</a>
     <a class="nav-tab" data-tab="products">Top Products</a>
-    <a class="nav-tab" data-tab="coupons">ExtraCare &amp; Coupons</a>
+    <a class="nav-tab" data-tab="coupons">SmartRewards &amp; Coupons</a>
     <a class="nav-tab" data-tab="markets">Markets &amp; Stores</a>
     <a class="nav-tab" data-tab="financials">10-K Financials</a>
     <a class="nav-tab" data-tab="projections">Revenue Projections</a>
@@ -757,7 +760,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content active" id="tab-dashboard">
     <div class="hero">
       <h1>Pharmacy &amp; Consumer Wellness: Front Store Optimization</h1>
-      <p>Recommendation engine targeting $21.5B in front store revenue. Personalized coupons, inventory optimization, and margin protection across 8,979 CVS retail locations.</p>
+      <p>Recommendation engine targeting $21.5B in front store revenue. Personalized coupons, inventory optimization, and margin protection across 8,979 retail locations.</p>
     </div>
 
     <div class="kpi-grid">
@@ -814,10 +817,10 @@ tbody tr:last-child td { border-bottom: none; }
         </div>
         <div class="panel-body padded">
           <div class="tier-legend" style="margin-bottom:16px">
-            <div class="tier-item"><div class="tier-dot" style="background:var(--cvs-red)"></div> Coupon Loyalist</div>
-            <div class="tier-item"><div class="tier-dot" style="background:var(--cvs-blue)"></div> Coupon Curious</div>
-            <div class="tier-item"><div class="tier-dot" style="background:var(--cvs-green)"></div> Organic Star</div>
-            <div class="tier-item"><div class="tier-dot" style="background:var(--cvs-orange)"></div> Hidden Gem</div>
+            <div class="tier-item"><div class="tier-dot" style="background:var(--dd-red)"></div> Coupon Loyalist</div>
+            <div class="tier-item"><div class="tier-dot" style="background:var(--dd-blue)"></div> Coupon Curious</div>
+            <div class="tier-item"><div class="tier-dot" style="background:var(--dd-green)"></div> Organic Star</div>
+            <div class="tier-item"><div class="tier-dot" style="background:var(--dd-orange)"></div> Hidden Gem</div>
           </div>
           <div class="callout info">
             <strong>Loyalists:</strong> High clips + high redemption &rarr; reduce discount, they'll still buy<br>
@@ -928,8 +931,8 @@ tbody tr:last-child td { border-bottom: none; }
           </div>
           <div class="product-card">
             <div class="product-badge badge-organic">Organic Star</div>
-            <div class="product-name">CVS Health Ibuprofen 200mg 50ct</div>
-            <div class="product-brand">CVS Health</div>
+            <div class="product-name">DD Health Ibuprofen 200mg 50ct</div>
+            <div class="product-brand">DD Health</div>
             <div class="product-price">$7<span class="cents">49</span></div>
             <div class="product-meta">
               <span>Margin: 62.1%</span>
@@ -989,8 +992,8 @@ tbody tr:last-child td { border-bottom: none; }
   <!-- ==================== TAB: Coupons ==================== -->
   <section class="tab-content" id="tab-coupons">
     <div class="hero" style="background:linear-gradient(135deg, #CC0000 0%, #E8384F 100%)">
-      <h1>ExtraCare &amp; Digital Coupons</h1>
-      <p>16.4M coupon clip events across 10M customers. The ExtraCare program is one of the largest retail loyalty programs in the U.S. &mdash; our system optimizes it.</p>
+      <h1>SmartRewards &amp; Digital Coupons</h1>
+      <p>16.4M coupon clip events across 10M customers. The SmartRewards program is one of the largest retail loyalty programs in the U.S. &mdash; our system optimizes it.</p>
     </div>
 
     <div class="kpi-grid">
@@ -1083,7 +1086,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-markets">
     <div class="hero" style="background:linear-gradient(135deg, #0066CC 0%, #004499 100%)">
       <h1>Markets &amp; Store Performance</h1>
-      <p>8,983 synthetic store locations mapped to real CVS store IDs. Geographic distribution weighted by actual CVS density. Revenue per store enables targeted deployment.</p>
+      <p>8,983 synthetic store locations mapped to real store IDs. Geographic distribution weighted by actual store density. Revenue per store enables targeted deployment.</p>
     </div>
 
     <div class="panel">
@@ -1118,9 +1121,9 @@ tbody tr:last-child td { border-bottom: none; }
             <tr><th>Year</th><th class="right">Start</th><th class="right">Opened</th><th class="right">Closed</th><th class="right">End</th><th class="right">Net Change</th></tr>
           </thead>
           <tbody>
-            <tr><td>FY2023</td><td class="right">9,674</td><td class="right">39</td><td class="right">(318)</td><td class="right"><strong>9,395</strong></td><td class="right" style="color:var(--cvs-red)">-279</td></tr>
-            <tr><td>FY2024</td><td class="right">9,395</td><td class="right">39</td><td class="right">(299)</td><td class="right"><strong>9,135</strong></td><td class="right" style="color:var(--cvs-red)">-260</td></tr>
-            <tr><td>FY2025</td><td class="right">9,135</td><td class="right">87</td><td class="right">(243)</td><td class="right"><strong>8,979</strong></td><td class="right" style="color:var(--cvs-red)">-156</td></tr>
+            <tr><td>FY2023</td><td class="right">9,674</td><td class="right">39</td><td class="right">(318)</td><td class="right"><strong>9,395</strong></td><td class="right" style="color:var(--dd-red)">-279</td></tr>
+            <tr><td>FY2024</td><td class="right">9,395</td><td class="right">39</td><td class="right">(299)</td><td class="right"><strong>9,135</strong></td><td class="right" style="color:var(--dd-red)">-260</td></tr>
+            <tr><td>FY2025</td><td class="right">9,135</td><td class="right">87</td><td class="right">(243)</td><td class="right"><strong>8,979</strong></td><td class="right" style="color:var(--dd-red)">-156</td></tr>
           </tbody>
         </table>
       </div>
@@ -1134,14 +1137,14 @@ tbody tr:last-child td { border-bottom: none; }
   <!-- ==================== TAB: Financials ==================== -->
   <section class="tab-content" id="tab-financials">
     <div class="hero" style="background:linear-gradient(135deg, #1A1A1A 0%, #444 100%)">
-      <h1>CVS Health 10-K Financial Reality</h1>
+      <h1>10-K Financial Reality</h1>
       <p>All numbers directly from SEC 10-K filings. FY2024 (filed Feb 12, 2025) and FY2025 (filed Feb 10, 2026). These anchor every projection we make.</p>
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <h2>Consolidated Revenue ($M)</h2>
-        <p>Source: CVS Health 10-K SEC filings</p>
+        <p>Source: 10-K SEC filings</p>
       </div>
       <div class="panel-body">
         <table>
@@ -1149,11 +1152,11 @@ tbody tr:last-child td { border-bottom: none; }
             <tr><th>Line Item</th><th class="right">FY2023</th><th class="right">FY2024</th><th class="right">FY2025</th><th class="right">FY24 vs 23</th><th class="right">FY25 vs 24</th></tr>
           </thead>
           <tbody>
-            <tr><td>Products</td><td class="right">$245,138</td><td class="right">$231,521</td><td class="right">$249,908</td><td class="right" style="color:var(--cvs-red)">-5.6%</td><td class="right" style="color:var(--cvs-green)">+7.9%</td></tr>
-            <tr><td>Premiums</td><td class="right">$99,192</td><td class="right">$122,896</td><td class="right">$134,751</td><td class="right" style="color:var(--cvs-green)">+23.9%</td><td class="right" style="color:var(--cvs-green)">+9.6%</td></tr>
-            <tr><td>Services</td><td class="right">$12,293</td><td class="right">$16,239</td><td class="right">$15,175</td><td class="right" style="color:var(--cvs-green)">+32.1%</td><td class="right" style="color:var(--cvs-red)">-6.6%</td></tr>
-            <tr><td>Net Investment Income</td><td class="right">$1,153</td><td class="right">$2,153</td><td class="right">$2,233</td><td class="right" style="color:var(--cvs-green)">+86.7%</td><td class="right" style="color:var(--cvs-green)">+3.7%</td></tr>
-            <tr style="background:var(--cvs-gray-100);font-weight:700"><td>TOTAL REVENUES</td><td class="right">$357,776</td><td class="right">$372,809</td><td class="right">$402,067</td><td class="right" style="color:var(--cvs-green)">+4.2%</td><td class="right" style="color:var(--cvs-green)">+7.8%</td></tr>
+            <tr><td>Products</td><td class="right">$245,138</td><td class="right">$231,521</td><td class="right">$249,908</td><td class="right" style="color:var(--dd-red)">-5.6%</td><td class="right" style="color:var(--dd-green)">+7.9%</td></tr>
+            <tr><td>Premiums</td><td class="right">$99,192</td><td class="right">$122,896</td><td class="right">$134,751</td><td class="right" style="color:var(--dd-green)">+23.9%</td><td class="right" style="color:var(--dd-green)">+9.6%</td></tr>
+            <tr><td>Services</td><td class="right">$12,293</td><td class="right">$16,239</td><td class="right">$15,175</td><td class="right" style="color:var(--dd-green)">+32.1%</td><td class="right" style="color:var(--dd-red)">-6.6%</td></tr>
+            <tr><td>Net Investment Income</td><td class="right">$1,153</td><td class="right">$2,153</td><td class="right">$2,233</td><td class="right" style="color:var(--dd-green)">+86.7%</td><td class="right" style="color:var(--dd-green)">+3.7%</td></tr>
+            <tr style="background:var(--dd-gray-100);font-weight:700"><td>TOTAL REVENUES</td><td class="right">$357,776</td><td class="right">$372,809</td><td class="right">$402,067</td><td class="right" style="color:var(--dd-green)">+4.2%</td><td class="right" style="color:var(--dd-green)">+7.8%</td></tr>
           </tbody>
         </table>
       </div>
@@ -1172,9 +1175,9 @@ tbody tr:last-child td { border-bottom: none; }
             <tr><td>Health Care Benefits</td><td class="right">$105,646</td><td class="right">$130,665</td><td class="right">$143,354</td></tr>
             <tr><td>Health Services (PBM)</td><td class="right">$186,843</td><td class="right">$173,605</td><td class="right">$190,425</td></tr>
             <tr style="font-weight:700;background:#FFF5F5"><td>Pharmacy &amp; Consumer Wellness</td><td class="right">$116,763</td><td class="right">$124,500</td><td class="right">$139,367</td></tr>
-            <tr><td style="color:var(--cvs-gray-500)">&nbsp;&nbsp;↳ Pharmacy</td><td class="right">$92,111</td><td class="right">$100,687</td><td class="right">$115,510</td></tr>
-            <tr><td style="color:var(--cvs-gray-500)">&nbsp;&nbsp;↳ Front Store</td><td class="right">$22,458</td><td class="right">$21,522</td><td class="right">$21,459</td></tr>
-            <tr><td style="color:var(--cvs-gray-500)">&nbsp;&nbsp;↳ Front Store % of P&amp;CW</td><td class="right">21.1%</td><td class="right">19.1%</td><td class="right">17.1%</td></tr>
+            <tr><td style="color:var(--dd-gray-500)">&nbsp;&nbsp;↳ Pharmacy</td><td class="right">$92,111</td><td class="right">$100,687</td><td class="right">$115,510</td></tr>
+            <tr><td style="color:var(--dd-gray-500)">&nbsp;&nbsp;↳ Front Store</td><td class="right">$22,458</td><td class="right">$21,522</td><td class="right">$21,459</td></tr>
+            <tr><td style="color:var(--dd-gray-500)">&nbsp;&nbsp;↳ Front Store % of P&amp;CW</td><td class="right">21.1%</td><td class="right">19.1%</td><td class="right">17.1%</td></tr>
           </tbody>
         </table>
       </div>
@@ -1230,7 +1233,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-projections">
     <div class="hero" style="background:linear-gradient(135deg, #008A00 0%, #006600 100%)">
       <h1>Revenue Impact: Conservative Projections</h1>
-      <p>Anchored to real CVS 10-K numbers. We deliberately underestimate &mdash; it is better to over-deliver than to set aggressive targets that erode credibility.</p>
+      <p>Anchored to real 10-K numbers. We deliberately underestimate &mdash; it is better to over-deliver than to set aggressive targets that erode credibility.</p>
     </div>
 
     <div class="callout info">
@@ -1247,8 +1250,8 @@ tbody tr:last-child td { border-bottom: none; }
           <div class="scenario-row"><span class="label">Organic star margin save</span><span class="value">+1.5%</span></div>
           <div class="scenario-row"><span class="label">Basket size lift</span><span class="value">+1%</span></div>
           <div class="scenario-row"><span class="label">Frequency lift</span><span class="value">+0.5%</span></div>
-          <div class="scenario-row" style="border-top:2px solid var(--cvs-gray-100)"><span class="label">Front Store Lift</span><span class="value" style="color:var(--cvs-green)">~1-2%</span></div>
-          <div class="scenario-row"><span class="label">Incremental Revenue</span><span class="value" style="color:var(--cvs-green);font-size:18px">$200-430M</span></div>
+          <div class="scenario-row" style="border-top:2px solid var(--dd-gray-100)"><span class="label">Front Store Lift</span><span class="value" style="color:var(--dd-green)">~1-2%</span></div>
+          <div class="scenario-row"><span class="label">Incremental Revenue</span><span class="value" style="color:var(--dd-green);font-size:18px">$200-430M</span></div>
         </div>
       </div>
       <div class="scenario-card">
@@ -1260,8 +1263,8 @@ tbody tr:last-child td { border-bottom: none; }
           <div class="scenario-row"><span class="label">Organic star margin save</span><span class="value">+3%</span></div>
           <div class="scenario-row"><span class="label">Basket size lift</span><span class="value">+2.5%</span></div>
           <div class="scenario-row"><span class="label">Frequency lift</span><span class="value">+1.5%</span></div>
-          <div class="scenario-row" style="border-top:2px solid var(--cvs-gray-100)"><span class="label">Front Store Lift</span><span class="value" style="color:var(--cvs-green)">~3-5%</span></div>
-          <div class="scenario-row"><span class="label">Incremental Revenue</span><span class="value" style="color:var(--cvs-green);font-size:18px">$600-1,000M</span></div>
+          <div class="scenario-row" style="border-top:2px solid var(--dd-gray-100)"><span class="label">Front Store Lift</span><span class="value" style="color:var(--dd-green)">~3-5%</span></div>
+          <div class="scenario-row"><span class="label">Incremental Revenue</span><span class="value" style="color:var(--dd-green);font-size:18px">$600-1,000M</span></div>
         </div>
       </div>
     </div>
@@ -1274,7 +1277,7 @@ tbody tr:last-child td { border-bottom: none; }
         <div class="callout success">
           <strong>The math:</strong> A 1-2% lift on $21.5B in front store revenue = $215-430M. That is real money. It does not need to be $2B to matter.
         </div>
-        <div style="font-size:13px;line-height:1.8;color:var(--cvs-gray-700)">
+        <div style="font-size:13px;line-height:1.8;color:var(--dd-gray-700)">
           <p>The stock market has already priced in the decline ($6.47 &rarr; $3.66 &rarr; $1.39 EPS). If we project conservative numbers and beat them:</p>
           <ol style="padding-left:20px;margin:8px 0">
             <li>Stock re-rates upward on earnings surprise</li>
@@ -1282,7 +1285,7 @@ tbody tr:last-child td { border-bottom: none; }
             <li>Recommendation system gets more investment</li>
           </ol>
           <p>If we project aggressive numbers and miss: credibility erosion, program gets cut.</p>
-          <p style="margin-top:12px"><strong>Given CVS's declining EPS, margin compression, and store closures, any projection above "moderate" would not be credible to investors or the board.</strong></p>
+          <p style="margin-top:12px"><strong>Given declining EPS, margin compression, and store closures, any projection above "moderate" would not be credible to investors or the board.</strong></p>
         </div>
       </div>
     </div>
@@ -1291,7 +1294,7 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="panel-header">
         <h2>What Happens If We Do Nothing</h2>
       </div>
-      <div class="panel-body padded" style="font-size:13px;color:var(--cvs-gray-700);line-height:1.7">
+      <div class="panel-body padded" style="font-size:13px;color:var(--dd-gray-700);line-height:1.7">
         <ul style="padding-left:20px">
           <li><strong>Coupon waste continues:</strong> 65% of clips go unredeemed</li>
           <li><strong>Hidden gems stay hidden:</strong> High-margin products remain undiscovered</li>
@@ -1307,11 +1310,11 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-shrinkage">
     <div class="hero" style="background:linear-gradient(135deg, #E87722 0%, #CC5500 100%)">
       <h1>Shrinkage &amp; Loss Prevention</h1>
-      <p>CVS does NOT disclose specific shrinkage figures in the 10-K. Estimates below from Congressional testimony, NRF industry data, and analyst extrapolation. This is a defensive play &mdash; hedging retail losses.</p>
+      <p>The company does NOT disclose specific shrinkage figures in the 10-K. Estimates below from Congressional testimony, NRF industry data, and analyst extrapolation. This is a defensive play &mdash; hedging retail losses.</p>
     </div>
 
     <div class="callout warning">
-      <strong>Disclaimer:</strong> Shrinkage estimates are NOT from the 10-K. They are sourced from public Congressional testimony by CVS executives (~$200M/year ORC losses), NRF industry averages (1.4-1.6% of sales), and analyst extrapolation.
+      <strong>Disclaimer:</strong> Shrinkage estimates are NOT from the 10-K. They are sourced from public Congressional testimony by company executives (~$200M/year ORC losses), NRF industry averages (1.4-1.6% of sales), and analyst extrapolation.
     </div>
 
     <div class="kpi-grid">
@@ -1335,7 +1338,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="panel">
       <div class="panel-header">
         <h2>Loss Prevention Device ROI</h2>
-        <p>Estimated costs and deterrence rates (industry averages, not CVS-specific)</p>
+        <p>Estimated costs and deterrence rates (industry averages)</p>
       </div>
       <div class="panel-body">
         <table>
@@ -1343,11 +1346,11 @@ tbody tr:last-child td { border-bottom: none; }
             <tr><th>Device</th><th class="right">Annual Cost</th><th class="right">Target Shrink</th><th class="right">Est. Savings</th><th class="right">Net Savings</th><th class="right">ROI</th></tr>
           </thead>
           <tbody>
-            <tr><td>EAS Tags (disposable)</td><td class="right">$0.4M</td><td class="right">30%</td><td class="right">$61.8M</td><td class="right" style="color:var(--cvs-green)">$61.4M</td><td class="right" style="color:var(--cvs-green);font-weight:700">+14,750%</td></tr>
-            <tr><td>RFID Inventory Tracking</td><td class="right">$1.0M</td><td class="right">20%</td><td class="right">$58.3M</td><td class="right" style="color:var(--cvs-green)">$57.3M</td><td class="right" style="color:var(--cvs-green);font-weight:700">+5,630%</td></tr>
-            <tr><td>Locked Display Cases</td><td class="right">$15.8M</td><td class="right">15%</td><td class="right">$43.8M</td><td class="right" style="color:var(--cvs-green)">$28.0M</td><td class="right" style="color:var(--cvs-green);font-weight:700">+177%</td></tr>
-            <tr><td>Self-Checkout AI</td><td class="right">$137.0M</td><td class="right">10%</td><td class="right">$29.2M</td><td class="right" style="color:var(--cvs-red)">($107.8M)</td><td class="right" style="color:var(--cvs-red);font-weight:700">-79%</td></tr>
-            <tr style="background:var(--cvs-gray-100);font-weight:700"><td>TOTAL</td><td class="right">$154.2M</td><td class="right">&mdash;</td><td class="right">$193.1M</td><td class="right" style="color:var(--cvs-green)">$38.9M</td><td class="right" style="color:var(--cvs-green)">+25%</td></tr>
+            <tr><td>EAS Tags (disposable)</td><td class="right">$0.4M</td><td class="right">30%</td><td class="right">$61.8M</td><td class="right" style="color:var(--dd-green)">$61.4M</td><td class="right" style="color:var(--dd-green);font-weight:700">+14,750%</td></tr>
+            <tr><td>RFID Inventory Tracking</td><td class="right">$1.0M</td><td class="right">20%</td><td class="right">$58.3M</td><td class="right" style="color:var(--dd-green)">$57.3M</td><td class="right" style="color:var(--dd-green);font-weight:700">+5,630%</td></tr>
+            <tr><td>Locked Display Cases</td><td class="right">$15.8M</td><td class="right">15%</td><td class="right">$43.8M</td><td class="right" style="color:var(--dd-green)">$28.0M</td><td class="right" style="color:var(--dd-green);font-weight:700">+177%</td></tr>
+            <tr><td>Self-Checkout AI</td><td class="right">$137.0M</td><td class="right">10%</td><td class="right">$29.2M</td><td class="right" style="color:var(--dd-red)">($107.8M)</td><td class="right" style="color:var(--dd-red);font-weight:700">-79%</td></tr>
+            <tr style="background:var(--dd-gray-100);font-weight:700"><td>TOTAL</td><td class="right">$154.2M</td><td class="right">&mdash;</td><td class="right">$193.1M</td><td class="right" style="color:var(--dd-green)">$38.9M</td><td class="right" style="color:var(--dd-green)">+25%</td></tr>
           </tbody>
         </table>
       </div>
@@ -1366,9 +1369,9 @@ tbody tr:last-child td { border-bottom: none; }
         <div style="font-size:14px;line-height:1.8">
           <table style="font-size:14px">
             <tbody>
-              <tr><td style="padding:8px 16px">Recommendation system (conservative)</td><td class="right" style="padding:8px 16px;color:var(--cvs-green);font-weight:700">$200-430M</td></tr>
-              <tr><td style="padding:8px 16px">Loss prevention (EAS + RFID only)</td><td class="right" style="padding:8px 16px;color:var(--cvs-green);font-weight:700">$118.7M</td></tr>
-              <tr style="background:var(--cvs-gray-100);font-weight:700"><td style="padding:12px 16px">Combined Conservative Estimate</td><td class="right" style="padding:12px 16px;color:var(--cvs-green);font-size:18px">$319-549M</td></tr>
+              <tr><td style="padding:8px 16px">Recommendation system (conservative)</td><td class="right" style="padding:8px 16px;color:var(--dd-green);font-weight:700">$200-430M</td></tr>
+              <tr><td style="padding:8px 16px">Loss prevention (EAS + RFID only)</td><td class="right" style="padding:8px 16px;color:var(--dd-green);font-weight:700">$118.7M</td></tr>
+              <tr style="background:var(--dd-gray-100);font-weight:700"><td style="padding:12px 16px">Combined Conservative Estimate</td><td class="right" style="padding:12px 16px;color:var(--dd-green);font-size:18px">$319-549M</td></tr>
             </tbody>
           </table>
         </div>
@@ -1415,7 +1418,7 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
     <div class="footer-bottom">
-      <span>&copy; 2026 Analytics Dashboard &mdash; Internal Use Only &mdash; Not affiliated with CVS Health Corporation</span>
+      <span>&copy; 2026 Analytics Dashboard &mdash; Internal Use Only &mdash; Data Decomp Analytics Platform</span>
       <span>Built with Bun &bull; Zero Dependencies &bull; Single HTML File</span>
     </div>
   </div>
@@ -1441,7 +1444,7 @@ function filterSearch(query) {
   if (!q) return;
   const map = {
     'product': 'products', 'tylenol': 'products', 'advil': 'products', 'category': 'products',
-    'coupon': 'coupons', 'extracare': 'coupons', 'clip': 'coupons', 'redeem': 'coupons', 'bogo': 'coupons',
+    'coupon': 'coupons', 'smartrewards': 'coupons', 'clip': 'coupons', 'redeem': 'coupons', 'bogo': 'coupons',
     'store': 'markets', 'market': 'markets', 'california': 'markets', 'state': 'markets',
     '10-k': 'financials', '10k': 'financials', 'revenue': 'financials', 'margin': 'financials', 'eps': 'financials', 'earnings': 'financials',
     'project': 'projections', 'conservative': 'projections', 'moderate': 'projections', 'lift': 'projections',

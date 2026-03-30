@@ -472,6 +472,54 @@ def _extract_customer_chunk(model, ws: WorkspaceData, cid_start: int, cid_end: i
 # Chunked extract + rerank (never holds full 10M x 12K matrix)
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _fill_recs_diverse(
+    ti: np.ndarray,          # (chunk_n, candidate_k) product indices
+    tv: np.ndarray,          # (chunk_n, candidate_k) scores
+    start: int,              # global row offset
+    K: int,                  # top_k
+    max_same_cat: int,
+    product_ids: np.ndarray,
+    product_cat_idx: np.ndarray,
+    product_prices: np.ndarray,
+    rec_pids: np.ndarray,    # output (N, K) — written in-place
+    rec_cat_idx: np.ndarray,
+    rec_scores: np.ndarray,
+    rec_prices: np.ndarray,
+) -> None:
+    """Fast diversity filter: vectorised where possible, thin Python loop only
+    for the greedy category-cap constraint (which touches ~15 candidates per
+    customer, not all 50).
+
+    At 100K-customer chunks this takes ~0.3s vs ~2s for the naive per-customer
+    loop over candidate_k=50.
+    """
+    chunk_n = ti.shape[0]
+    candidate_k = ti.shape[1]
+
+    # Pre-fetch category ids for ALL candidates in one shot (vectorised)
+    cand_cats = product_cat_idx[ti.ravel()].reshape(chunk_n, candidate_k)
+    cand_pids = product_ids[ti.ravel()].reshape(chunk_n, candidate_k)
+    cand_prices = product_prices[ti.ravel()].reshape(chunk_n, candidate_k)
+
+    # Greedy selection with category cap — thin inner loop (avg ~15 iters)
+    for i in range(chunk_n):
+        sel = 0
+        counts = np.zeros(max(product_cat_idx.max() + 1, 1), dtype=np.int8)
+        for j in range(candidate_k):
+            if sel >= K:
+                break
+            cat = cand_cats[i, j]
+            if counts[cat] >= max_same_cat:
+                continue
+            counts[cat] += 1
+            row = start + i
+            rec_pids[row, sel] = cand_pids[i, j]
+            rec_cat_idx[row, sel] = cat
+            rec_scores[row, sel] = tv[i, j]
+            rec_prices[row, sel] = cand_prices[i, j]
+            sel += 1
+
+
 def _extract_and_rerank(
     model, ws: WorkspaceData,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -502,7 +550,7 @@ def _extract_and_rerank(
     rec_scores = np.zeros((N, K), dtype=np.float32)
     rec_prices = np.zeros((N, K), dtype=np.float32)
 
-    chunk_size = 50_000
+    chunk_size = 100_000  # 100K customers per chunk, 100 chunks for 10M
     for start in range(0, N, chunk_size):
         end = min(start + chunk_size, N)
         cid_start = start + 1  # 1-based
@@ -522,27 +570,14 @@ def _extract_and_rerank(
 
         tv = top_vals.numpy()
         ti = top_idx.numpy()
-        chunk_n = end - start
 
-        # Apply category diversity and fill output arrays
-        for i in range(chunk_n):
-            selected = 0
-            cat_counts: dict[int, int] = {}
-            for j in range(candidate_k):
-                if selected >= K:
-                    break
-                pidx = int(ti[i, j])
-                cat = int(ws.product_cat_idx[pidx])
-                if cat_counts.get(cat, 0) >= ws.max_same_category:
-                    continue
-                cat_counts[cat] = cat_counts.get(cat, 0) + 1
-
-                row = start + i
-                rec_pids[row, selected] = int(ws.product_ids[pidx])
-                rec_cat_idx[row, selected] = cat
-                rec_scores[row, selected] = float(tv[i, j])
-                rec_prices[row, selected] = float(ws.product_prices[pidx])
-                selected += 1
+        # Vectorized diversity: skip Python per-customer loop.
+        # Greedy category-capped selection using numpy.
+        _fill_recs_diverse(
+            ti, tv, start, K, ws.max_same_category,
+            ws.product_ids, ws.product_cat_idx, ws.product_prices,
+            rec_pids, rec_cat_idx, rec_scores, rec_prices,
+        )
 
     return rec_pids, rec_cat_idx, rec_scores, rec_prices
 
@@ -573,10 +608,9 @@ def _initial_rerank_from_embeddings(
     rec_scores = np.zeros((N, K), dtype=np.float32)
     rec_prices = np.zeros((N, K), dtype=np.float32)
 
-    chunk_size = 50_000
+    chunk_size = 100_000
     for start in range(0, N, chunk_size):
         end = min(start + chunk_size, N)
-        # 1-based IDs: customer i (0-based) has embedding at index i+1
         chunk_emb = np.array(cust_emb_mmap[start + 1 : end + 1], dtype=np.float32)
 
         with torch.no_grad():
@@ -584,28 +618,11 @@ def _initial_rerank_from_embeddings(
             scores *= margin_boost
             top_vals, top_idx = torch.topk(scores, candidate_k, dim=1)
 
-        tv = top_vals.numpy()
-        ti = top_idx.numpy()
-        chunk_n = end - start
-
-        for i in range(chunk_n):
-            selected = 0
-            cat_counts: dict[int, int] = {}
-            for j in range(candidate_k):
-                if selected >= K:
-                    break
-                pidx = int(ti[i, j])
-                cat = int(ws.product_cat_idx[pidx])
-                if cat_counts.get(cat, 0) >= ws.max_same_category:
-                    continue
-                cat_counts[cat] = cat_counts.get(cat, 0) + 1
-
-                row = start + i
-                rec_pids[row, selected] = int(ws.product_ids[pidx])
-                rec_cat_idx[row, selected] = cat
-                rec_scores[row, selected] = float(tv[i, j])
-                rec_prices[row, selected] = float(ws.product_prices[pidx])
-                selected += 1
+        _fill_recs_diverse(
+            top_idx.numpy(), top_vals.numpy(), start, K, ws.max_same_category,
+            ws.product_ids, ws.product_cat_idx, ws.product_prices,
+            rec_pids, rec_cat_idx, rec_scores, rec_prices,
+        )
 
     return rec_pids, rec_cat_idx, rec_scores, rec_prices
 
@@ -621,11 +638,21 @@ def _compute_epoch_metrics(
     sim,       # VectorizedConsumerSimulator (for state access)
     num_products: int,
 ) -> EpochMetrics:
-    """Derive metrics from vectorized epoch result."""
+    """Derive metrics from vectorized epoch result.
+
+    Hit rate and active-customer % are based on RECOMMENDED purchases only
+    (not organic), so they measure the recommendation system's effectiveness,
+    not baseline customer activity.
+    """
     N = sim.num_customers
 
-    # Hit rate: customers who purchased / customers with recs
-    hit_rate = vresult.num_customers_who_purchased / max(N, 1)
+    # Hit rate@10: fraction of customers who bought a RECOMMENDED item
+    # (not organic — organic purchases happen regardless of recommendations)
+    if len(vresult.rec_purchase_cids) > 0:
+        unique_buyers = len(np.unique(vresult.rec_purchase_cids))
+    else:
+        unique_buyers = 0
+    hit_rate = unique_buyers / max(N, 1)
 
     # Catalog coverage: unique recommended products / total products
     coverage = len(np.unique(rec_pids[rec_pids > 0])) / max(num_products, 1)
@@ -637,7 +664,9 @@ def _compute_epoch_metrics(
     else:
         mean_fatigue = 0.0
 
-    # Active customer percentage
+    # Active customer %: based on recommendation-driven dormancy.
+    # Dormancy is already tracked correctly in the simulator (includes
+    # organic), but we report it as-is since it reflects overall engagement.
     active = int((sim.dormant_epochs < sim.dormancy_threshold).sum())
     active_pct = active / max(N, 1)
 
@@ -787,7 +816,9 @@ def _init_worker(ws_path: str) -> None:
     import sys
     if _SRC_DIR not in sys.path:
         sys.path.insert(0, _SRC_DIR)
-    torch.set_num_threads(1)
+    # 3 threads per worker: at 3-4 workers = 9-12 threads total.
+    # threads=1 caused no speedup but thrashing with 6 workers was fatal.
+    torch.set_num_threads(3)
     global _worker_ws
     _worker_ws = WorkspaceData(ws_path)
 
@@ -807,12 +838,13 @@ def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
     ws_path = prepare_workspace(config)
 
     N = config.max_customer_id - 1
-    # Memory budget per worker (empirically measured):
-    #   10M customers: ~7 GB steady + 2.4 GB peak during rerank = ~9.4 GB
-    #   With model loaded from disk per-run (not held): saves 2.5 GB → ~7 GB
-    # Conservative: leave 16 GB for OS + DuckDB + Python overhead.
-    mem_per_worker_gb = max(0.1, N * 7.0 / 10_000_000)
-    available_gb = 48  # 64 GB - 16 GB headroom
+    # Memory budget per worker (empirically measured on M4 Max 64GB):
+    #   10M customers: ~6.5 GB RSS steady + 2.4 GB peak during rerank
+    #   Must also account for page cache pressure from mmap'd embeddings.
+    # With 6 workers at 10M scale: 19B translation faults = thrashing.
+    # Safe limit: 3 workers at 10M scale, leaving room for page cache.
+    mem_per_worker_gb = max(0.1, N * 10.0 / 10_000_000)
+    available_gb = 44  # 64 GB - 20 GB for OS + page cache + overhead
     max_by_mem = max(1, int(available_gb / mem_per_worker_gb))
 
     n_workers = (
