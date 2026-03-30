@@ -12,6 +12,11 @@ data/db/*.duckdb.wal
 data/model/
 data/results/
 
+# Reference documents (10-K filings)
+*.pdf
+*.xls
+*.xlsx
+
 # Compiled binary
 txn_generator
 *.dylib

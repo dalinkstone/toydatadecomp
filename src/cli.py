@@ -14,6 +14,7 @@ Usage:
     python src/cli.py infer
     python src/cli.py validate
     python src/cli.py tier products
+    python src/cli.py elasticity estimate --sample-pct 2
     python src/cli.py simulate run --epochs 250 --runs 75
     python src/cli.py simulate status
     python src/cli.py status
@@ -321,6 +322,32 @@ def tier_products(db_path, output_dir):
     from ml.product_tiers import main as _main
     console.print("[bold]→ Running product tier classification...[/bold]")
     args = ["--db-path", db_path, "--output-dir", output_dir]
+    _main(args, standalone_mode=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# elasticity
+# ═══════════════════════════════════════════════════════════════════════
+
+@toydatadecomp.group()
+def elasticity():
+    """Price elasticity estimation from transaction discount data."""
+    pass
+
+
+@elasticity.command("estimate")
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb",
+              help="DuckDB database path.")
+@click.option("--output-dir", default="data/model/",
+              help="Output directory for parquet files.")
+@click.option("--sample-pct", default=2.0, type=float,
+              help="Percent of transactions to sample (1-5 recommended).")
+def elasticity_estimate(db_path, output_dir, sample_pct):
+    """Estimate price elasticity per product using discount vs. quantity data."""
+    from ml.elasticity import main as _main
+    console.print("[bold]→ Running price elasticity estimation...[/bold]")
+    args = ["--db-path", db_path, "--output-dir", output_dir,
+            "--sample-pct", str(sample_pct)]
     _main(args, standalone_mode=False)
 
 
