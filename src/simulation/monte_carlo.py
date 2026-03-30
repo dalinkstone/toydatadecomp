@@ -8,12 +8,11 @@ INNER LOOP (one simulation run):
 OUTER LOOP (Monte Carlo replications):
   repeat inner loop with different seeds -> aggregate -> detect convergence
 
-Evaluates real-world effectiveness by detecting feedback loop degeneration
-(popularity bias, filter bubbles) and estimating steady-state metrics.
-
-Each run samples behavioural parameters from distributions (fatigue onset,
-re-engagement probability, halo effect strength, etc.), so the outer loop
-averages over *possible worlds* of consumer behaviour -- not just random noise.
+Designed for full scale (10M customers, 12K products) via:
+  - Vectorized consumer simulator (numpy batch ops, ~1-2s per epoch at 10M)
+  - Chunked embedding extraction and re-ranking (never holds full 10M x 12K matrix)
+  - Memory-mapped embedding files (no 10GB eager loads)
+  - Capped retrain pair count (subsample if > 2M pairs)
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from rich.console import Console
 from rich.progress import (
@@ -46,6 +44,9 @@ from rich.progress import (
 console = Console()
 
 _SRC_DIR = str(Path(__file__).resolve().parent.parent)
+
+# Upper bound on training pairs per retrain (keeps retrains fast at 10M scale)
+MAX_RETRAIN_PAIRS = 2_000_000
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -125,10 +126,7 @@ def _vnorm(arr: np.ndarray, key: str, norm_stats: dict) -> np.ndarray:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def prepare_workspace(config: SimulationConfig) -> str:
-    """Extract all data workers need from DuckDB / model dir and save to disk.
-
-    Returns the workspace directory path.
-    """
+    """Extract all data workers need and save to disk."""
     import sys
     if _SRC_DIR not in sys.path:
         sys.path.insert(0, _SRC_DIR)
@@ -160,9 +158,7 @@ def prepare_workspace(config: SimulationConfig) -> str:
 
     # ── Features ─────────────────────────────────────────────────────
     if not Path(config.db_path).exists():
-        raise FileNotFoundError(
-            f"DuckDB not found: {config.db_path}. Run the pipeline first."
-        )
+        raise FileNotFoundError(f"DuckDB not found: {config.db_path}")
     console.print("  Loading features from DuckDB...")
     fs = FeatureStore(config.db_path)
     if not fs.has_features():
@@ -177,7 +173,7 @@ def prepare_workspace(config: SimulationConfig) -> str:
     state_vocab = fs.export_state_vocab()
     fs.close()
 
-    # Trim customer features to active set to save memory
+    # Trim to active customers
     trimmed = {}
     for key, arr in customer_features.items():
         trimmed[key] = arr[: config.max_customer_id]
@@ -223,40 +219,30 @@ def prepare_workspace(config: SimulationConfig) -> str:
     np.save(ws / "product_prices.npy", prices)
     np.save(ws / "product_popularity.npy", popularity)
 
-    # ── Product catalog for ConsumerSimulator ────────────────────────
-    catalog = [
-        {
-            "product_id": int(pid),
-            "category": str(info.get("category", "unknown")),
-            "price": float(info.get("price", 10.0) or 10.0),
-            "popularity_score": float(info.get("popularity_score", 0.01) or 0.01),
-        }
-        for pid, info in product_lookup.items()
-    ]
-    with open(ws / "product_catalog.json", "w") as f:
-        json.dump(catalog, f)
+    # Category index array (aligned with product_ids)
+    cat_vocab = ckpt["category_vocab"]
+    cat_idx_arr = np.zeros(n_prod, dtype=np.int32)
+    for i, cat_name in enumerate(categories):
+        cat_idx_arr[i] = cat_vocab.get(str(cat_name), 0)
+    np.save(ws / "product_cat_idx.npy", cat_idx_arr)
 
-    # ── Initial recommendations ──────────────────────────────────────
-    recs_path = Path(config.results_dir) / "ranked_recommendations.parquet"
-    if recs_path.exists():
-        console.print("  Filtering initial recommendations...")
-        tbl = pq.read_table(recs_path)
-        df = tbl.to_pandas()
-        df = df[df["customer_id"] < config.max_customer_id]
-        pq.write_table(pa.Table.from_pandas(df, preserve_index=False),
-                        ws / "initial_recommendations.parquet")
-    else:
-        console.print("[yellow]  No ranked_recommendations.parquet "
-                      "-- will generate from embeddings.[/yellow]")
+    # Catalog arrays for organic purchases
+    cat_pids = product_ids.astype(np.int64)
+    cat_prices = prices.copy()
+    pop = np.maximum(popularity, 1e-6)
+    cat_weights = pop / pop.sum()
+    np.save(ws / "catalog_pids.npy", cat_pids)
+    np.save(ws / "catalog_prices.npy", cat_prices)
+    np.save(ws / "catalog_weights.npy", cat_weights)
 
-    # ── Copy embeddings ──────────────────────────────────────────────
+    # ── Copy embeddings (workers memory-map these) ───────────────────
     console.print("  Embeddings...")
     for fname in ["customer_embeddings.npy", "product_embeddings.npy"]:
         src = model_dir / fname
         if src.exists():
             shutil.copy2(src, ws / fname)
 
-    # ── Simulation config ────────────────────────────────────────────
+    # ── Config ───────────────────────────────────────────────────────
     with open(ws / "sim_config.json", "w") as f:
         json.dump({
             "max_customer_id": config.max_customer_id,
@@ -282,22 +268,23 @@ class WorkspaceData:
 
     def __init__(self, workspace_path: str):
         ws = Path(workspace_path)
+        self._ws = ws
 
         # Model weights
         self.model_state_dict: dict = torch.load(
             ws / "model_state_dict.pt", map_location="cpu", weights_only=True
         )
 
-        # Customer feature arrays (trimmed, indexed 0..max_cid-1)
+        # Customer features (trimmed to max_customer_id)
         cf = np.load(ws / "customer_features.npz")
         self.customer_features: dict[str, np.ndarray] = {k: cf[k] for k in cf.files}
 
-        # Product lookup {int_pid: {field: value}}
+        # Product lookup
         with open(ws / "product_lookup.json") as f:
             raw = json.load(f)
         self.product_lookup: dict[int, dict] = {int(k): v for k, v in raw.items()}
 
-        # Vocabularies
+        # Vocabs
         with open(ws / "vocabs.json") as f:
             v = json.load(f)
         self.brand_vocab: dict[str, int] = v["brand_vocab"]
@@ -305,40 +292,38 @@ class WorkspaceData:
         with open(ws / "state_vocab.json") as f:
             self.state_vocab: dict[str, int] = json.load(f)
 
-        # Normalization stats
+        # Norm stats
         with open(ws / "norm_stats.json") as f:
             raw_ns = json.load(f)
         self.norm_stats: dict[str, tuple[float, float]] = {
             k: tuple(v) for k, v in raw_ns.items()
         }
 
-        # Product catalog (for ConsumerSimulator organic purchases)
-        with open(ws / "product_catalog.json") as f:
-            self.product_catalog: list[dict] = json.load(f)
-
-        # Product metadata arrays (aligned with product_ids index)
+        # Product metadata
         self.product_ids: np.ndarray = np.load(ws / "product_ids.npy")
         self.product_categories: np.ndarray = np.load(
             ws / "product_categories.npy", allow_pickle=True
         )
+        self.product_cat_idx: np.ndarray = np.load(ws / "product_cat_idx.npy")
         self.product_margins: np.ndarray = np.load(ws / "product_margins.npy")
         self.product_prices: np.ndarray = np.load(ws / "product_prices.npy")
-        self.product_popularity: np.ndarray = np.load(
-            ws / "product_popularity.npy"
-        )
         self.pid_to_idx: dict[int, int] = {
             int(p): i for i, p in enumerate(self.product_ids)
         }
 
-        # Embeddings (starting point for each run)
-        self.customer_embeddings: np.ndarray = np.load(
-            ws / "customer_embeddings.npy"
-        )
+        # Catalog arrays for organic purchases
+        self.catalog_pids: np.ndarray = np.load(ws / "catalog_pids.npy")
+        self.catalog_prices: np.ndarray = np.load(ws / "catalog_prices.npy")
+        self.catalog_weights: np.ndarray = np.load(ws / "catalog_weights.npy")
+
+        # Embeddings: memory-map to avoid 10GB per-worker RAM hit.
+        # Only read in chunks during extract_and_rerank.
+        self.customer_emb_path: str = str(ws / "customer_embeddings.npy")
         self.product_embeddings: np.ndarray = np.load(
             ws / "product_embeddings.npy"
         )
 
-        # Config scalars
+        # Config
         with open(ws / "sim_config.json") as f:
             cfg = json.load(f)
         self.max_customer_id: int = cfg["max_customer_id"]
@@ -349,20 +334,6 @@ class WorkspaceData:
         self.retrain_epochs: int = cfg["retrain_epochs"]
         self.retrain_lr: float = cfg["retrain_lr"]
         self.retrain_batch_size: int = cfg["retrain_batch_size"]
-
-        # Initial recommendations
-        recs_path = ws / "initial_recommendations.parquet"
-        if recs_path.exists():
-            self.initial_recommendations: dict[int, list[dict]] = (
-                _parse_recommendations(
-                    str(recs_path),
-                    self.product_prices,
-                    self.pid_to_idx,
-                    self.max_customer_id,
-                )
-            )
-        else:
-            self.initial_recommendations = {}
 
         # Pre-compute product feature batch for embedding extraction
         self.product_feat_batch: dict[str, torch.Tensor] = (
@@ -427,46 +398,35 @@ def _build_product_feature_batch(ws: WorkspaceData) -> dict[str, torch.Tensor]:
     }
 
 
-def _warm_start_retrain(
-    model,
-    purchases: list[tuple[int, int]],
-    ws: WorkspaceData,
-) -> None:
-    """Warm-start retrain the model on recent simulated purchases (in-place).
-
-    Only trains for 1-2 epochs at low learning rate on CPU.
-    """
+def _warm_start_retrain(model, purchases: list[tuple[int, int]], ws: WorkspaceData) -> None:
+    """Warm-start retrain on recent purchases (in-place). Subsamples if too many."""
     from ml.train import TransactionDataset, collate_fn
     from ml.two_tower import TwoTowerModel
 
     if len(purchases) < 10:
         return
 
+    # Subsample to cap compute time
+    if len(purchases) > MAX_RETRAIN_PAIRS:
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(purchases), size=MAX_RETRAIN_PAIRS, replace=False)
+        purchases = [purchases[i] for i in idx]
+
     cids = np.array([p[0] for p in purchases], dtype=np.int64)
     pids = np.array([p[1] for p in purchases], dtype=np.int64)
 
     ds = TransactionDataset(
-        cids, pids,
-        ws.customer_features,
-        ws.product_lookup,
-        ws.brand_vocab,
-        ws.category_vocab,
-        ws.norm_stats,
-        num_products=len(ws.product_lookup),
-        neg_samples=ws.neg_samples,
+        cids, pids, ws.customer_features, ws.product_lookup,
+        ws.brand_vocab, ws.category_vocab, ws.norm_stats,
+        num_products=len(ws.product_lookup), neg_samples=ws.neg_samples,
     )
     loader = DataLoader(
-        ds,
-        batch_size=min(ws.retrain_batch_size, len(ds)),
-        shuffle=True,
-        num_workers=0,
-        collate_fn=collate_fn,
-        drop_last=False,
+        ds, batch_size=min(ws.retrain_batch_size, len(ds)),
+        shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=False,
     )
 
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=ws.retrain_lr)
-
     for _ in range(ws.retrain_epochs):
         for cust_b, pos_b, neg_bs, pos_margin in loader:
             opt.zero_grad(set_to_none=True)
@@ -477,151 +437,171 @@ def _warm_start_retrain(
             opt.step()
 
 
-def _extract_embeddings(model, ws: WorkspaceData):
-    """Extract updated customer & product embeddings from the model.
-
-    Returns (customer_emb, product_emb) numpy arrays.
-    customer_emb is (max_customer_id, 256) with index 0 zeroed (1-based IDs).
-    """
-    model.eval()
-    max_cid = ws.max_customer_id
+def _extract_customer_chunk(model, ws: WorkspaceData, cid_start: int, cid_end: int) -> np.ndarray:
+    """Extract customer embeddings for IDs [cid_start, cid_end) — 1-based."""
     cf = ws.customer_features
+    n = cid_end - cid_start
 
-    # ── Product embeddings ───────────────────────────────────────────
-    with torch.inference_mode():
-        product_emb = model.product_tower(**ws.product_feat_batch).numpy()
-
-    # ── Customer embeddings (vectorized, all at once for demo scale) ─
-    n = max_cid - 1  # customers 1..max_cid-1
-
-    gender_idx = cf["gender"][1:max_cid].astype(np.int64)
+    gender_idx = cf["gender"][cid_start:cid_end].astype(np.int64)
     gender_oh = np.zeros((n, 3), dtype=np.float32)
     gender_oh[np.arange(n), np.clip(gender_idx, 0, 2)] = 1.0
 
     with torch.inference_mode():
-        cust_batch = {
-            "customer_id": torch.arange(1, max_cid, dtype=torch.long),
-            "age": torch.from_numpy(
-                _vnorm(cf["age"][1:max_cid], "age", ws.norm_stats)
-            ),
+        batch = {
+            "customer_id": torch.arange(cid_start, cid_end, dtype=torch.long),
+            "age": torch.from_numpy(_vnorm(cf["age"][cid_start:cid_end], "age", ws.norm_stats)),
             "gender_onehot": torch.from_numpy(gender_oh),
-            "state_id": torch.from_numpy(
-                cf["state"][1:max_cid].astype(np.int64).copy()
-            ),
-            "is_student": torch.from_numpy(
-                cf["is_student"][1:max_cid].astype(np.float32).copy()
-            ),
-            "total_spend": torch.from_numpy(
-                _vnorm(cf["total_spend"][1:max_cid], "total_spend", ws.norm_stats)
-            ),
-            "coupon_engagement": torch.from_numpy(
-                cf["coupon_engagement_score"][1:max_cid].astype(np.float32).copy()
-            ),
-            "coupon_redemption_rate": torch.from_numpy(
-                cf["coupon_redemption_rate"][1:max_cid].astype(np.float32).copy()
-            ),
-            "avg_basket_size": torch.from_numpy(
-                _vnorm(cf["avg_basket_size"][1:max_cid], "avg_basket_size",
-                       ws.norm_stats)
-            ),
+            "state_id": torch.from_numpy(cf["state"][cid_start:cid_end].astype(np.int64).copy()),
+            "is_student": torch.from_numpy(cf["is_student"][cid_start:cid_end].astype(np.float32).copy()),
+            "total_spend": torch.from_numpy(_vnorm(cf["total_spend"][cid_start:cid_end], "total_spend", ws.norm_stats)),
+            "coupon_engagement": torch.from_numpy(cf["coupon_engagement_score"][cid_start:cid_end].astype(np.float32).copy()),
+            "coupon_redemption_rate": torch.from_numpy(cf["coupon_redemption_rate"][cid_start:cid_end].astype(np.float32).copy()),
+            "avg_basket_size": torch.from_numpy(_vnorm(cf["avg_basket_size"][cid_start:cid_end], "avg_basket_size", ws.norm_stats)),
         }
-        customer_emb = model.customer_tower(**cust_batch).numpy()
-
-    # Pad index 0 (unused, IDs are 1-based)
-    customer_emb = np.vstack(
-        [np.zeros((1, customer_emb.shape[1]), dtype=np.float32), customer_emb]
-    )
-    return customer_emb, product_emb
+        emb = model.customer_tower(**batch).numpy()
+    return emb
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Recommendation parsing / generation
+# Chunked extract + rerank (never holds full 10M x 12K matrix)
 # ═══════════════════════════════════════════════════════════════════════════
 
-def _parse_recommendations(
-    path: str,
-    product_prices: np.ndarray,
-    pid_to_idx: dict[int, int],
-    max_customer_id: int,
-) -> dict[int, list[dict[str, Any]]]:
-    """Parse ranked_recommendations.parquet into simulator input format."""
-    tbl = pq.read_table(path)
-    df = tbl.to_pandas()
-    df = df[df["customer_id"] < max_customer_id]
+def _extract_and_rerank(
+    model, ws: WorkspaceData,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Extract embeddings and generate (N, K) recommendation arrays in one
+    chunked pass.  Peak memory per chunk: 50K x 12K x 4 = 2.4 GB.
 
-    recs: dict[int, list[dict]] = {}
-    for _, row in df.iterrows():
-        cid = int(row["customer_id"])
-        pid = int(row["product_id"])
-        idx = pid_to_idx.get(pid)
-        price = float(product_prices[idx]) if idx is not None else 10.0
-        recs.setdefault(cid, []).append({
-            "product_id": pid,
-            "category": str(row["category"]),
-            "final_score": float(row["final_score"]),
-            "price": price,
-        })
-    return recs
-
-
-def _lightweight_rerank(
-    customer_emb: np.ndarray,
-    product_emb: np.ndarray,
-    ws: WorkspaceData,
-) -> dict[int, list[dict[str, Any]]]:
-    """Compute per-customer top-K recommendations from embeddings.
-
-    Simplified ranking: dot-product affinity + margin boost + category
-    diversity.  Skips recency / coupon signals (static, not part of the
-    feedback loop being evaluated).
+    Returns (rec_pids, rec_cat_idx, rec_scores, rec_prices) all shape (N, K).
+    N = max_customer_id - 1, K = top_k.
     """
-    max_cid = ws.max_customer_id
-    top_k = ws.top_k
+    model.eval()
+    N = ws.max_customer_id - 1
+    K = ws.top_k
     n_prod = len(ws.product_ids)
-    candidate_k = min(top_k * 5, n_prod)
+    candidate_k = min(K * 5, n_prod)
+
+    # Product embeddings (small, all at once)
+    with torch.inference_mode():
+        prod_emb = model.product_tower(**ws.product_feat_batch).numpy()
+    prod_t = torch.from_numpy(prod_emb.astype(np.float32))
 
     margin_boost = torch.from_numpy(
         (1.0 + ws.product_margins * ws.margin_weight).astype(np.float32)
     ).unsqueeze(0)
 
-    recommendations: dict[int, list[dict]] = {}
+    # Allocate output arrays
+    rec_pids = np.zeros((N, K), dtype=np.int64)
+    rec_cat_idx = np.zeros((N, K), dtype=np.int32)
+    rec_scores = np.zeros((N, K), dtype=np.float32)
+    rec_prices = np.zeros((N, K), dtype=np.float32)
 
-    # Full matrix multiply -- ~460 MB for 10K x 12K, fine for demo
-    with torch.no_grad():
-        cust_t = torch.from_numpy(customer_emb[1:max_cid].astype(np.float32))
-        prod_t = torch.from_numpy(product_emb.astype(np.float32))
-        scores = torch.mm(cust_t, prod_t.T)
-        scores *= margin_boost
-        top_vals, top_idx = torch.topk(scores, candidate_k, dim=1)
+    chunk_size = 50_000
+    for start in range(0, N, chunk_size):
+        end = min(start + chunk_size, N)
+        cid_start = start + 1  # 1-based
+        cid_end = end + 1
 
-    top_vals_np = top_vals.numpy()
-    top_idx_np = top_idx.numpy()
+        # Extract customer embeddings for this chunk
+        cust_emb = _extract_customer_chunk(model, ws, cid_start, cid_end)
 
-    for i in range(max_cid - 1):
-        cid = i + 1
-        selected: list[dict] = []
-        cat_counts: dict[str, int] = {}
+        # Score + top-K
+        with torch.no_grad():
+            scores = torch.mm(
+                torch.from_numpy(cust_emb.astype(np.float32)),
+                prod_t.T,
+            )
+            scores *= margin_boost
+            top_vals, top_idx = torch.topk(scores, candidate_k, dim=1)
 
-        for j in range(candidate_k):
-            if len(selected) >= top_k:
-                break
-            idx = int(top_idx_np[i, j])
-            cat = str(ws.product_categories[idx])
-            if cat_counts.get(cat, 0) >= ws.max_same_category:
-                continue
-            cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        tv = top_vals.numpy()
+        ti = top_idx.numpy()
+        chunk_n = end - start
 
-            selected.append({
-                "product_id": int(ws.product_ids[idx]),
-                "category": cat,
-                "final_score": float(top_vals_np[i, j]),
-                "price": float(ws.product_prices[idx]),
-            })
+        # Apply category diversity and fill output arrays
+        for i in range(chunk_n):
+            selected = 0
+            cat_counts: dict[int, int] = {}
+            for j in range(candidate_k):
+                if selected >= K:
+                    break
+                pidx = int(ti[i, j])
+                cat = int(ws.product_cat_idx[pidx])
+                if cat_counts.get(cat, 0) >= ws.max_same_category:
+                    continue
+                cat_counts[cat] = cat_counts.get(cat, 0) + 1
 
-        if selected:
-            recommendations[cid] = selected
+                row = start + i
+                rec_pids[row, selected] = int(ws.product_ids[pidx])
+                rec_cat_idx[row, selected] = cat
+                rec_scores[row, selected] = float(tv[i, j])
+                rec_prices[row, selected] = float(ws.product_prices[pidx])
+                selected += 1
 
-    return recommendations
+    return rec_pids, rec_cat_idx, rec_scores, rec_prices
+
+
+def _initial_rerank_from_embeddings(
+    ws: WorkspaceData,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Generate initial recommendations from saved embeddings (memory-mapped).
+
+    Same as _extract_and_rerank but reads customer embeddings from disk
+    instead of running the model forward pass.
+    """
+    N = ws.max_customer_id - 1
+    K = ws.top_k
+    n_prod = len(ws.product_ids)
+    candidate_k = min(K * 5, n_prod)
+
+    cust_emb_mmap = np.load(ws.customer_emb_path, mmap_mode="r")
+    prod_emb = ws.product_embeddings.astype(np.float32)
+    prod_t = torch.from_numpy(prod_emb)
+
+    margin_boost = torch.from_numpy(
+        (1.0 + ws.product_margins * ws.margin_weight).astype(np.float32)
+    ).unsqueeze(0)
+
+    rec_pids = np.zeros((N, K), dtype=np.int64)
+    rec_cat_idx = np.zeros((N, K), dtype=np.int32)
+    rec_scores = np.zeros((N, K), dtype=np.float32)
+    rec_prices = np.zeros((N, K), dtype=np.float32)
+
+    chunk_size = 50_000
+    for start in range(0, N, chunk_size):
+        end = min(start + chunk_size, N)
+        # 1-based IDs: customer i (0-based) has embedding at index i+1
+        chunk_emb = np.array(cust_emb_mmap[start + 1 : end + 1], dtype=np.float32)
+
+        with torch.no_grad():
+            scores = torch.mm(torch.from_numpy(chunk_emb), prod_t.T)
+            scores *= margin_boost
+            top_vals, top_idx = torch.topk(scores, candidate_k, dim=1)
+
+        tv = top_vals.numpy()
+        ti = top_idx.numpy()
+        chunk_n = end - start
+
+        for i in range(chunk_n):
+            selected = 0
+            cat_counts: dict[int, int] = {}
+            for j in range(candidate_k):
+                if selected >= K:
+                    break
+                pidx = int(ti[i, j])
+                cat = int(ws.product_cat_idx[pidx])
+                if cat_counts.get(cat, 0) >= ws.max_same_category:
+                    continue
+                cat_counts[cat] = cat_counts.get(cat, 0) + 1
+
+                row = start + i
+                rec_pids[row, selected] = int(ws.product_ids[pidx])
+                rec_cat_idx[row, selected] = cat
+                rec_scores[row, selected] = float(tv[i, j])
+                rec_prices[row, selected] = float(ws.product_prices[pidx])
+                selected += 1
+
+    return rec_pids, rec_cat_idx, rec_scores, rec_prices
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -630,60 +610,44 @@ def _lightweight_rerank(
 
 def _compute_epoch_metrics(
     epoch: int,
-    epoch_result,  # EpochResult
-    recommendations: dict[int, list[dict]],
-    customer_states: dict,  # {cid: CustomerState}
+    vresult,   # VectorizedEpochResult
+    rec_pids: np.ndarray,   # (N, K)
+    sim,       # VectorizedConsumerSimulator (for state access)
     num_products: int,
-    dormancy_threshold: int,
 ) -> EpochMetrics:
-    """Derive all tracked metrics from one epoch's simulation output."""
-    rec_rev = sum(p["revenue"] for p in epoch_result.recommended_purchases)
-    halo_rev = sum(p["revenue"] for p in epoch_result.halo_purchases)
-    organic_rev = sum(p["revenue"] for p in epoch_result.organic_purchases)
+    """Derive metrics from vectorized epoch result."""
+    N = sim.num_customers
 
-    # Hit rate@10: fraction of customers with recs who bought a rec'd item
-    cids_with_recs = set(recommendations.keys())
-    cids_bought = {p["customer_id"] for p in epoch_result.recommended_purchases}
-    hit_rate = (
-        len(cids_bought & cids_with_recs) / max(len(cids_with_recs), 1)
-    )
+    # Hit rate: customers who purchased / customers with recs
+    hit_rate = vresult.num_customers_who_purchased / max(N, 1)
 
-    # Catalog coverage: unique products currently recommended / total
-    rec_pids: set[int] = set()
-    for recs in recommendations.values():
-        for r in recs:
-            rec_pids.add(r["product_id"])
-    coverage = len(rec_pids) / max(num_products, 1)
+    # Catalog coverage: unique recommended products / total products
+    coverage = len(np.unique(rec_pids[rec_pids > 0])) / max(num_products, 1)
 
-    # Mean fatigue (average touch count across customer-category pairs)
-    total_touches = 0
-    n_entries = 0
-    for state in customer_states.values():
-        for touches in state.fatigue_touches.values():
-            total_touches += touches
-            n_entries += 1
-    mean_fatigue = total_touches / max(n_entries, 1)
+    # Mean fatigue (across customer-category pairs that have been touched)
+    touched = sim.fatigue_touches > 0
+    if touched.any():
+        mean_fatigue = float(sim.fatigue_touches[touched].mean())
+    else:
+        mean_fatigue = 0.0
 
-    # Active customer percentage (non-dormant)
-    active = sum(
-        1 for s in customer_states.values()
-        if s.dormant_epochs < dormancy_threshold
-    )
-    active_pct = active / max(len(customer_states), 1)
+    # Active customer percentage
+    active = int((sim.dormant_epochs < sim.dormancy_threshold).sum())
+    active_pct = active / max(N, 1)
 
     return EpochMetrics(
         epoch=epoch,
-        revenue=epoch_result.revenue,
-        recommended_revenue=rec_rev,
-        halo_revenue=halo_rev,
-        organic_revenue=organic_rev,
+        revenue=vresult.total_revenue,
+        recommended_revenue=vresult.recommended_revenue,
+        halo_revenue=vresult.halo_revenue,
+        organic_revenue=vresult.organic_revenue,
         hit_rate_at_10=hit_rate,
         catalog_coverage=coverage,
         mean_fatigue_level=mean_fatigue,
         active_customer_pct=active_pct,
-        num_recommended_purchases=len(epoch_result.recommended_purchases),
-        num_halo_purchases=len(epoch_result.halo_purchases),
-        num_organic_purchases=len(epoch_result.organic_purchases),
+        num_recommended_purchases=vresult.num_recommended_purchases,
+        num_halo_purchases=vresult.num_halo_purchases,
+        num_organic_purchases=vresult.num_organic_purchases,
     )
 
 
@@ -697,23 +661,25 @@ def run_single_simulation(
     retrain_interval: int,
     ws: WorkspaceData,
 ) -> SimulationResult:
-    """Execute one full inner-loop simulation.
-
-    1. Build model from checkpoint
-    2. Initialise consumer simulator & customer states
-    3. For each epoch: simulate -> collect metrics -> maybe retrain & re-rank
-    4. Return per-epoch time series of metrics
-    """
-    from simulation.consumer_behavior import ConsumerSimulator, CustomerState
+    """Execute one full inner-loop simulation with vectorized consumer sim."""
+    from simulation.vectorized_consumer import VectorizedConsumerSimulator
 
     seed = run_id
+    N = ws.max_customer_id - 1  # number of customers (0-indexed)
+    num_products = len(ws.product_ids)
 
-    # ── Simulator with run-specific distributional draws ─────────────
-    sim = ConsumerSimulator(seed=seed, product_catalog=ws.product_catalog)
+    # ── Vectorized simulator ─────────────────────────────────────────
+    sim = VectorizedConsumerSimulator(
+        seed=seed,
+        num_customers=N,
+        category_to_idx=ws.category_vocab,
+        catalog_pids=ws.catalog_pids,
+        catalog_prices=ws.catalog_prices,
+        catalog_weights=ws.catalog_weights,
+    )
 
     result = SimulationResult(
-        run_id=run_id,
-        seed=seed,
+        run_id=run_id, seed=seed,
         parameters={
             "fatigue_steepness": sim.fatigue_steepness,
             "re_engagement_prob": sim.re_engagement_prob,
@@ -723,56 +689,38 @@ def run_single_simulation(
         },
     )
 
-    # ── Customer states (fresh for each run) ─────────────────────────
-    customer_states: dict[int, CustomerState] = {
-        cid: CustomerState() for cid in range(1, ws.max_customer_id)
-    }
-
-    # ── Model (each run gets a fresh copy from the original weights) ─
+    # ── Model (fresh copy per run — load_state_dict copies weights) ──
     model = _build_model(ws.model_state_dict)
-    # load_state_dict already copies weights, so ws.model_state_dict
-    # is not mutated by warm-start retrains within this run.
 
-    # ── Embeddings & recommendations ─────────────────────────────────
-    customer_emb = ws.customer_embeddings.copy()
-    product_emb = ws.product_embeddings.copy()
-
-    if ws.initial_recommendations:
-        recommendations = dict(ws.initial_recommendations)
-    else:
-        recommendations = _lightweight_rerank(customer_emb, product_emb, ws)
+    # ── Initial recommendations from saved embeddings (chunked) ──────
+    rec_pids, rec_cat_idx, rec_scores, rec_prices = (
+        _initial_rerank_from_embeddings(ws)
+    )
 
     # ── Accumulated purchases for warm-start retrain ─────────────────
     recent_purchases: list[tuple[int, int]] = []
-    num_products = len(ws.product_ids)
 
     for epoch in range(1, num_epochs + 1):
-        # Simulate one week of consumer behaviour
-        epoch_result = sim.simulate_epoch(customer_states, recommendations)
+        # Simulate one epoch
+        vresult = sim.simulate_epoch(rec_pids, rec_cat_idx, rec_scores, rec_prices)
 
-        # Record metrics
+        # Metrics
         metrics = _compute_epoch_metrics(
-            epoch, epoch_result, recommendations, customer_states,
-            num_products, sim.dormancy_threshold,
+            epoch, vresult, rec_pids, sim, num_products,
         )
         result.metrics.append(metrics)
 
-        # Accumulate recommended + organic purchases for retrain.
-        # Including organic prevents confirmation bias: the model sees
-        # what customers buy *independently* of its recommendations.
-        for p in epoch_result.recommended_purchases:
-            if p["product_id"] is not None:
-                recent_purchases.append((p["customer_id"], p["product_id"]))
-        for p in epoch_result.organic_purchases:
-            if p["product_id"] is not None:
-                recent_purchases.append((p["customer_id"], p["product_id"]))
+        # Accumulate purchases (convert 0-based index to 1-based customer_id)
+        for cid_idx, pid in zip(vresult.rec_purchase_cids, vresult.rec_purchase_pids):
+            recent_purchases.append((int(cid_idx) + 1, int(pid)))
+        for cid_idx, pid in zip(vresult.organic_purchase_cids, vresult.organic_purchase_pids):
+            recent_purchases.append((int(cid_idx) + 1, int(pid)))
 
         # Warm-start retrain at interval boundaries
         if epoch % retrain_interval == 0 and recent_purchases:
             _warm_start_retrain(model, recent_purchases, ws)
-            customer_emb, product_emb = _extract_embeddings(model, ws)
-            recommendations = _lightweight_rerank(
-                customer_emb, product_emb, ws
+            rec_pids, rec_cat_idx, rec_scores, rec_prices = (
+                _extract_and_rerank(model, ws)
             )
             recent_purchases = []
 
@@ -780,28 +728,24 @@ def run_single_simulation(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Worker pool (multiprocessing)
+# Worker pool
 # ═══════════════════════════════════════════════════════════════════════════
 
 _worker_ws: WorkspaceData | None = None
 
 
 def _init_worker(ws_path: str) -> None:
-    """Initialise a worker process: add src/ to path, load workspace, limit
-    torch threads to avoid contention between parallel workers."""
     import sys
     if _SRC_DIR not in sys.path:
         sys.path.insert(0, _SRC_DIR)
     torch.set_num_threads(1)
-
     global _worker_ws
     _worker_ws = WorkspaceData(ws_path)
 
 
 def _run_worker(args: tuple[int, int, int]) -> SimulationResult:
-    """Execute one simulation run inside a worker process."""
-    run_id, num_epochs, retrain_interval = args
     assert _worker_ws is not None
+    run_id, num_epochs, retrain_interval = args
     return run_single_simulation(run_id, num_epochs, retrain_interval, _worker_ws)
 
 
@@ -810,29 +754,26 @@ def _run_worker(args: tuple[int, int, int]) -> SimulationResult:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
-    """Execute the full Monte Carlo simulation (outer loop).
-
-    1. Prepare workspace (extract data to disk)
-    2. Spawn worker pool
-    3. Run ``num_runs`` independent inner loops with different seeds
-    4. Aggregate statistics and save all outputs
-    """
+    """Execute the full Monte Carlo simulation."""
     ws_path = prepare_workspace(config)
+
+    N = config.max_customer_id - 1
+    # Memory budget: ~9GB per worker at 10M, ~50MB at 10K
+    mem_per_worker_gb = max(0.05, N * 9.0 / 10_000_000)
+    available_gb = 50  # conservative, leave 14GB for OS + overhead
+    max_by_mem = max(1, int(available_gb / mem_per_worker_gb))
 
     n_workers = (
         config.num_workers if config.num_workers > 0
-        else max(1, cpu_count() - 1)
+        else min(max(1, cpu_count() - 1), max_by_mem)
     )
     n_workers = min(n_workers, config.num_runs)
 
     console.print("[bold]Monte Carlo Simulation[/bold]")
     console.print(f"  Runs: {config.num_runs}, Epochs: {config.num_epochs}")
-    console.print(f"  Retrain every {config.retrain_interval} epochs "
-                  f"({config.retrain_epochs} warm-start epochs, "
-                  f"lr={config.retrain_lr})")
-    console.print(f"  Workers: {n_workers}")
-    console.print(f"  Customers: {config.max_customer_id - 1:,}, "
-                  f"Products: ~{len(np.load(Path(ws_path) / 'product_ids.npy')):,}")
+    console.print(f"  Retrain every {config.retrain_interval} epochs")
+    console.print(f"  Workers: {n_workers} (mem budget: ~{mem_per_worker_gb:.1f} GB/worker)")
+    console.print(f"  Customers: {N:,}, Products: ~{len(np.load(Path(ws_path) / 'product_ids.npy')):,}")
     console.print()
 
     # Clean previous results
@@ -862,7 +803,6 @@ def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
         task = progress.add_task("Simulation runs", total=config.num_runs)
 
         if n_workers <= 1:
-            # Sequential (useful for debugging)
             import sys
             if _SRC_DIR not in sys.path:
                 sys.path.insert(0, _SRC_DIR)
@@ -889,7 +829,6 @@ def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
         f"\n[bold green]All {config.num_runs} runs complete[/bold green] "
         f"({elapsed:.1f}s)\n"
     )
-
     save_all_results(results, config)
     return results
 
@@ -906,14 +845,9 @@ TRACKED_METRICS = [
 ]
 
 
-def aggregate_results(
-    results: list[SimulationResult],
-    num_epochs: int,
-) -> pa.Table:
-    """Compute mean, std, and 95% CI across all runs for each epoch."""
+def aggregate_results(results: list[SimulationResult], num_epochs: int) -> pa.Table:
     n_runs = len(results)
     data = {m: np.zeros((n_runs, num_epochs)) for m in TRACKED_METRICS}
-
     for r_idx, res in enumerate(results):
         for e_idx, em in enumerate(res.metrics):
             for m in TRACKED_METRICS:
@@ -921,7 +855,6 @@ def aggregate_results(
 
     epochs = np.arange(1, num_epochs + 1)
     columns: dict[str, Any] = {"epoch": epochs}
-
     for m in TRACKED_METRICS:
         mean = data[m].mean(axis=0)
         std = data[m].std(axis=0)
@@ -930,26 +863,19 @@ def aggregate_results(
         columns[f"std_{m}"] = std
         columns[f"ci_lower_{m}"] = mean - 1.96 * se
         columns[f"ci_upper_{m}"] = mean + 1.96 * se
-
     return pa.table(columns)
 
 
 def compute_convergence(
-    results: list[SimulationResult],
-    num_epochs: int,
-    window: int = 20,
-    threshold: float = 0.05,
+    results: list[SimulationResult], num_epochs: int,
+    window: int = 20, threshold: float = 0.05,
 ) -> dict[str, int]:
-    """Find the epoch where cross-run coefficient of variation drops below
-    *threshold* for each key metric (averaged over a rolling window).
-    """
     key_metrics = [
         "revenue", "hit_rate_at_10", "catalog_coverage",
         "mean_fatigue_level", "active_customer_pct",
     ]
     n_runs = len(results)
     data = {m: np.zeros((n_runs, num_epochs)) for m in key_metrics}
-
     for r_idx, res in enumerate(results):
         for e_idx, em in enumerate(res.metrics):
             for m in key_metrics:
@@ -959,7 +885,6 @@ def compute_convergence(
     for m in key_metrics:
         means = data[m].mean(axis=0)
         stds = data[m].std(axis=0)
-
         converged = num_epochs
         for e in range(window, num_epochs):
             avg_mean = np.abs(means[e - window : e]).mean()
@@ -967,9 +892,7 @@ def compute_convergence(
             if avg_mean > 1e-10 and (avg_std / avg_mean) < threshold:
                 converged = e - window + 1
                 break
-
         convergence[m] = int(converged)
-
     return convergence
 
 
@@ -978,36 +901,26 @@ def compute_convergence(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _save_run(result: SimulationResult, output_dir: str) -> None:
-    """Save one run's per-epoch metrics as a parquet file."""
     os.makedirs(output_dir, exist_ok=True)
     path = os.path.join(output_dir, f"run_{result.run_id}.parquet")
-
     cols: dict[str, list] = {m: [] for m in TRACKED_METRICS}
     cols["epoch"] = []
-
     for em in result.metrics:
         cols["epoch"].append(em.epoch)
         for m in TRACKED_METRICS:
             cols[m].append(getattr(em, m))
-
     pq.write_table(pa.table(cols), path)
 
 
-def save_all_results(
-    results: list[SimulationResult],
-    config: SimulationConfig,
-) -> None:
-    """Write summary.parquet, parameters.json, and convergence.json."""
+def save_all_results(results: list[SimulationResult], config: SimulationConfig) -> None:
     out = Path(config.output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Summary statistics
     console.print("[cyan]Computing summary statistics...[/cyan]")
     summary = aggregate_results(results, config.num_epochs)
     pq.write_table(summary, out / "summary.parquet")
     console.print(f"  Saved summary.parquet")
 
-    # Sampled parameters for every run (reproducibility)
     params: dict[str, Any] = {
         "total_runs": config.num_runs,
         "num_epochs": config.num_epochs,
@@ -1023,7 +936,6 @@ def save_all_results(
         json.dump(params, f, indent=2)
     console.print(f"  Saved parameters.json")
 
-    # Convergence diagnostics
     convergence = compute_convergence(
         results, config.num_epochs,
         config.convergence_window, config.convergence_threshold,
@@ -1032,35 +944,18 @@ def save_all_results(
         json.dump(convergence, f, indent=2)
     console.print(f"  Saved convergence.json")
 
-    # Print final-epoch summary
     df = summary.to_pandas()
     last = df.iloc[-1]
     console.print(
         f"\n[bold]Final Epoch Metrics "
         f"(mean +/- std across {config.num_runs} runs):[/bold]"
     )
-    console.print(
-        f"  Revenue:          "
-        f"{last['mean_revenue']:,.2f} +/- {last['std_revenue']:,.2f}"
-    )
-    console.print(
-        f"  Hit rate@10:      "
-        f"{last['mean_hit_rate_at_10']:.4f} +/- {last['std_hit_rate_at_10']:.4f}"
-    )
-    console.print(
-        f"  Catalog coverage: "
-        f"{last['mean_catalog_coverage']:.4f} +/- {last['std_catalog_coverage']:.4f}"
-    )
-    console.print(
-        f"  Mean fatigue:     "
-        f"{last['mean_mean_fatigue_level']:.2f} +/- {last['std_mean_fatigue_level']:.2f}"
-    )
-    console.print(
-        f"  Active customers: "
-        f"{last['mean_active_customer_pct']:.1%} +/- {last['std_active_customer_pct']:.1%}"
-    )
-    console.print(f"\n[bold]Convergence "
-                  f"(epoch where CV < {config.convergence_threshold}):[/bold]")
+    console.print(f"  Revenue:          {last['mean_revenue']:,.2f} +/- {last['std_revenue']:,.2f}")
+    console.print(f"  Hit rate@10:      {last['mean_hit_rate_at_10']:.4f} +/- {last['std_hit_rate_at_10']:.4f}")
+    console.print(f"  Catalog coverage: {last['mean_catalog_coverage']:.4f} +/- {last['std_catalog_coverage']:.4f}")
+    console.print(f"  Mean fatigue:     {last['mean_mean_fatigue_level']:.2f} +/- {last['std_mean_fatigue_level']:.2f}")
+    console.print(f"  Active customers: {last['mean_active_customer_pct']:.1%} +/- {last['std_active_customer_pct']:.1%}")
+    console.print(f"\n[bold]Convergence (epoch where CV < {config.convergence_threshold}):[/bold]")
     for metric, ep in convergence.items():
         label = "converged" if ep < config.num_epochs else "did not converge"
         console.print(f"  {metric}: epoch {ep} ({label})")
@@ -1071,7 +966,6 @@ def save_all_results(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def show_status(output_dir: str) -> None:
-    """Show progress of an ongoing or completed simulation."""
     out = Path(output_dir)
     if not out.exists():
         console.print(f"[yellow]No simulation found at {output_dir}[/yellow]")
@@ -1080,7 +974,6 @@ def show_status(output_dir: str) -> None:
     runs = sorted(out.glob("run_*.parquet"))
     summary_exists = (out / "summary.parquet").exists()
     params_path = out / "parameters.json"
-
     total_runs = "?"
     if params_path.exists():
         with open(params_path) as f:
@@ -1096,30 +989,16 @@ def show_status(output_dir: str) -> None:
         df = pq.read_table(out / "summary.parquet").to_pandas()
         last = df.iloc[-1]
         console.print(f"\n  [bold]Final epoch (mean +/- std):[/bold]")
-        console.print(
-            f"    Revenue:          "
-            f"{last['mean_revenue']:,.2f} +/- {last['std_revenue']:,.2f}"
-        )
-        console.print(
-            f"    Hit rate@10:      "
-            f"{last['mean_hit_rate_at_10']:.4f} +/- "
-            f"{last['std_hit_rate_at_10']:.4f}"
-        )
-        console.print(
-            f"    Catalog coverage: "
-            f"{last['mean_catalog_coverage']:.4f} +/- "
-            f"{last['std_catalog_coverage']:.4f}"
-        )
+        console.print(f"    Revenue:          {last['mean_revenue']:,.2f} +/- {last['std_revenue']:,.2f}")
+        console.print(f"    Hit rate@10:      {last['mean_hit_rate_at_10']:.4f} +/- {last['std_hit_rate_at_10']:.4f}")
+        console.print(f"    Catalog coverage: {last['mean_catalog_coverage']:.4f} +/- {last['std_catalog_coverage']:.4f}")
     elif runs:
         console.print("  [yellow]Summary: not yet computed[/yellow]")
-        # Show last completed run's final metrics
         last_run = pq.read_table(runs[-1]).to_pandas()
         if not last_run.empty:
             lr = last_run.iloc[-1]
             run_num = Path(runs[-1]).stem.split("_")[1]
-            console.print(
-                f"\n  [bold]Last run (#{run_num}) final metrics:[/bold]"
-            )
+            console.print(f"\n  [bold]Last run (#{run_num}) final metrics:[/bold]")
             console.print(f"    Revenue: {lr['revenue']:,.2f}")
             console.print(f"    Hit rate@10: {lr['hit_rate_at_10']:.4f}")
             console.print(f"    Catalog coverage: {lr['catalog_coverage']:.4f}")

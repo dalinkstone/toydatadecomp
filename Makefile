@@ -5,7 +5,7 @@
 # Model: Two-tower neural network for purchase prediction
 
 SHELL := /bin/zsh
-PYTHON := .venv/bin/python
+PYTHON := PYTHONPATH=src .venv/bin/python
 PIP := .venv/bin/pip
 CC := clang
 CFLAGS := -O3 -march=native -Wall -Wextra -DACCELERATE_NEW_LAPACK
@@ -102,11 +102,12 @@ rank:
 EPOCHS ?= 250
 RUNS ?= 75
 RETRAIN_INTERVAL ?= 10
-SCALE ?= demo
+SCALE ?= full
+CUSTOMERS ?= 0
 
 simulate:
 	$(PYTHON) src/cli.py simulate run --epochs $(EPOCHS) --runs $(RUNS) \
-		--retrain-interval $(RETRAIN_INTERVAL) --scale $(SCALE)
+		--retrain-interval $(RETRAIN_INTERVAL) --scale $(SCALE) --customers $(CUSTOMERS)
 
 simulate-demo:
 	$(PYTHON) src/cli.py simulate run --epochs 50 --runs 10 --retrain-interval 10 --scale demo

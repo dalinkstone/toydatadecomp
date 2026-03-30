@@ -73,16 +73,23 @@ OUTPUT_SCHEMA = pa.schema([
 def materialize_recency(con: duckdb.DuckDBPyConnection, window: int):
     """Create a table of each customer's N most-recently-purchased distinct products.
 
-    Two-stage approach to avoid a full ROW_NUMBER over 10B raw transaction rows:
+    Three-stage approach designed for 10M customers × 10B transactions on 64GB RAM:
       1. GROUP BY customer_id, product_id to get last purchase date per pair
-      2. ROW_NUMBER to select the top N most recent distinct products per customer
+         (~4.4B rows, streams to disk via DuckDB spill)
+      2. Chunked ROW_NUMBER: process customer_id ranges in batches so the
+         window-sort never exceeds ~4GB of working memory
+      3. Concatenate chunk results into the final _recent_purchases table
     """
     console.print(f"[cyan]Materializing recency data "
                   f"(last {window} distinct products per customer)...[/cyan]")
     t0 = time.time()
 
+    # Tune DuckDB for this heavy workload
+    con.execute("SET preserve_insertion_order=false")
+    con.execute("SET threads=2")
+
     # Stage 1: aggregate to customer-product level (one pass over transactions)
-    console.print("  Stage 1/2: aggregating customer-product pairs...")
+    console.print("  Stage 1/3: aggregating customer-product pairs...")
     con.execute("""
         CREATE OR REPLACE TABLE _cust_prod_last AS
         SELECT customer_id, product_id, MAX(date) AS last_date
@@ -92,24 +99,50 @@ def materialize_recency(con: duckdb.DuckDBPyConnection, window: int):
     n1 = con.execute("SELECT COUNT(*) FROM _cust_prod_last").fetchone()[0]
     console.print(f"    {n1:,} customer-product pairs ({time.time() - t0:.1f}s)")
 
-    # Stage 2: rank by recency and keep top N per customer
-    console.print("  Stage 2/2: selecting most recent products per customer...")
-    con.execute(f"""
-        CREATE OR REPLACE TABLE _recent_purchases AS
-        SELECT customer_id, product_id
-        FROM (
-            SELECT customer_id, product_id,
-                   ROW_NUMBER() OVER (
-                       PARTITION BY customer_id
-                       ORDER BY last_date DESC
-                   ) AS rn
-            FROM _cust_prod_last
-        )
-        WHERE rn <= {window}
-    """)
+    # Stage 2: chunked ROW_NUMBER to avoid OOM on the window sort.
+    # With 4.4B rows and 10M customers, each customer has ~440 products on avg.
+    # Processing 500K customers at a time means ~220M rows per chunk, which
+    # sorts comfortably in <4GB of memory.
+    console.print("  Stage 2/3: selecting most recent products per customer (chunked)...")
 
-    # Cleanup intermediate
+    max_cid = con.execute(
+        "SELECT MAX(customer_id) FROM _cust_prod_last"
+    ).fetchone()[0]
+    chunk_size = 500_000
+    con.execute("CREATE OR REPLACE TABLE _recent_purchases (customer_id INTEGER, product_id INTEGER)")
+
+    chunks_done = 0
+    total_chunks = (max_cid + chunk_size - 1) // chunk_size
+
+    for cid_start in range(1, max_cid + 1, chunk_size):
+        cid_end = min(cid_start + chunk_size, max_cid + 1)
+        con.execute(f"""
+            INSERT INTO _recent_purchases
+            SELECT customer_id, product_id
+            FROM (
+                SELECT customer_id, product_id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY customer_id
+                           ORDER BY last_date DESC
+                       ) AS rn
+                FROM _cust_prod_last
+                WHERE customer_id >= {cid_start}
+                  AND customer_id < {cid_end}
+            )
+            WHERE rn <= {window}
+        """)
+        chunks_done += 1
+        if chunks_done % max(1, total_chunks // 10) == 0 or chunks_done == total_chunks:
+            elapsed = time.time() - t0
+            console.print(f"    Chunk {chunks_done}/{total_chunks} "
+                          f"({elapsed:.1f}s elapsed)")
+
+    # Stage 3: cleanup
+    console.print("  Stage 3/3: cleaning up intermediate table...")
     con.execute("DROP TABLE IF EXISTS _cust_prod_last")
+
+    # Restore default thread count
+    con.execute("SET threads=4")
 
     n = con.execute("SELECT COUNT(*) FROM _recent_purchases").fetchone()[0]
     elapsed = time.time() - t0
@@ -132,19 +165,36 @@ def _build_lookup(cids: np.ndarray, pids: np.ndarray) -> dict[int, set[int]]:
 
 
 def load_recency(con: duckdb.DuckDBPyConnection) -> dict[int, set[int]]:
-    """Load all recency data into memory as {customer_id: {product_ids}}."""
+    """Load all recency data into memory as {customer_id: {product_ids}}.
+
+    Loads in chunks to avoid a single 50M-row DataFrame allocation.
+    Final dict: ~10M keys × set of ~5 ints = ~2-3GB.
+    """
     console.print("[cyan]Loading recency lookup...[/cyan]")
     t0 = time.time()
-    df = con.execute(
-        "SELECT customer_id, product_id "
-        "FROM _recent_purchases ORDER BY customer_id"
-    ).fetchdf()
 
-    if len(df) == 0:
+    total = con.execute("SELECT COUNT(*) FROM _recent_purchases").fetchone()[0]
+    if total == 0:
         console.print("  No recency data found")
         return {}
 
-    recency = _build_lookup(df["customer_id"].values, df["product_id"].values)
+    recency: dict[int, set[int]] = {}
+    chunk = 5_000_000
+    offset = 0
+
+    while offset < total:
+        df = con.execute(
+            f"SELECT customer_id, product_id "
+            f"FROM _recent_purchases "
+            f"ORDER BY customer_id "
+            f"LIMIT {chunk} OFFSET {offset}"
+        ).fetchdf()
+        if len(df) == 0:
+            break
+        for cid, pid in zip(df["customer_id"].values, df["product_id"].values):
+            recency.setdefault(int(cid), set()).add(int(pid))
+        offset += chunk
+
     console.print(f"  {len(recency):,} customers with recency data "
                   f"({time.time() - t0:.1f}s)")
     return recency
@@ -419,9 +469,10 @@ def main(db_path, model_dir, output_dir, top_k, chunk_size, device,
     # ── Load product metadata ────────────────────────────────────────
     console.print("[cyan]Loading product metadata...[/cyan]")
     con = duckdb.connect(db_path)
-    con.execute("SET memory_limit='32GB'")
+    con.execute("SET memory_limit='24GB'")
     con.execute("SET temp_directory='/tmp/duckdb_temp'")
-    con.execute("SET threads=4")
+    con.execute("SET preserve_insertion_order=false")
+    con.execute("SET threads=2")
 
     product_df = con.execute("""
         SELECT product_id, category,

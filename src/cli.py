@@ -314,20 +314,24 @@ def simulate():
 @click.option("--epochs", default=250, help="Epochs per simulation run.")
 @click.option("--runs", default=75, help="Number of Monte Carlo runs.")
 @click.option("--retrain-interval", default=10, help="Retrain every N epochs.")
-@click.option("--scale", default="demo", type=click.Choice(["demo", "full"]),
-              help="Scale: demo (10K customers) or full.")
+@click.option("--scale", default="full", type=click.Choice(["demo", "full"]),
+              help="Scale: demo (10K customers) or full (all customers).")
+@click.option("--customers", default=0, type=int,
+              help="Override customer count (0=use scale setting).")
 @click.option("--db-path", default="data/db/cvs_analytics.duckdb")
 @click.option("--model-dir", default="data/model/")
 @click.option("--results-dir", default="data/results/")
 @click.option("--output-dir", default="data/results/simulation/")
 @click.option("--workers", default=0, type=int,
-              help="Worker processes (0=auto).")
-def simulate_run(epochs, runs, retrain_interval, scale, db_path, model_dir,
-                 results_dir, output_dir, workers):
+              help="Worker processes (0=auto based on memory).")
+def simulate_run(epochs, runs, retrain_interval, scale, customers, db_path,
+                 model_dir, results_dir, output_dir, workers):
     """Run the Monte Carlo simulation."""
     from simulation.monte_carlo import SimulationConfig, run_monte_carlo
 
-    if scale == "demo":
+    if customers > 0:
+        max_cid = customers + 1  # 1-based
+    elif scale == "demo":
         max_cid = 10_001
     else:
         import numpy as np
@@ -335,7 +339,8 @@ def simulate_run(epochs, runs, retrain_interval, scale, db_path, model_dir,
         if os.path.exists(emb_path):
             max_cid = int(np.load(emb_path, mmap_mode="r").shape[0])
         else:
-            max_cid = 10_001
+            console.print("[red]No embeddings found. Run training first.[/red]")
+            return
 
     config = SimulationConfig(
         num_epochs=epochs,
