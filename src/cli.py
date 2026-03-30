@@ -13,6 +13,7 @@ Usage:
     python src/cli.py train
     python src/cli.py infer
     python src/cli.py validate
+    python src/cli.py tier products
     python src/cli.py simulate run --epochs 250 --runs 75
     python src/cli.py simulate status
     python src/cli.py status
@@ -297,6 +298,29 @@ def rank(db_path, model_dir, output_dir, top_k, chunk_size, device,
         args.append("--demo")
     if skip_recency_build:
         args.append("--skip-recency-build")
+    _main(args, standalone_mode=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# tier
+# ═══════════════════════════════════════════════════════════════════════
+
+@toydatadecomp.group()
+def tier():
+    """Product and customer tiering from transaction data."""
+    pass
+
+
+@tier.command("products")
+@click.option("--db-path", default="data/db/cvs_analytics.duckdb",
+              help="DuckDB database path.")
+@click.option("--output-dir", default="data/model/",
+              help="Output directory for parquet and JSON.")
+def tier_products(db_path, output_dir):
+    """Classify products into four revenue-based tiers."""
+    from ml.product_tiers import main as _main
+    console.print("[bold]→ Running product tier classification...[/bold]")
+    args = ["--db-path", db_path, "--output-dir", output_dir]
     _main(args, standalone_mode=False)
 
 
