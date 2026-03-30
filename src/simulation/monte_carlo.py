@@ -264,16 +264,18 @@ def prepare_workspace(config: SimulationConfig) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 
 class WorkspaceData:
-    """All data a worker process needs, loaded from disk."""
+    """All data a worker process needs, loaded from disk.
+
+    Model state dict is NOT held in RAM -- it is loaded from disk per-run
+    and freed immediately after building the model (saves 2.5 GB/worker).
+    """
 
     def __init__(self, workspace_path: str):
         ws = Path(workspace_path)
         self._ws = ws
 
-        # Model weights
-        self.model_state_dict: dict = torch.load(
-            ws / "model_state_dict.pt", map_location="cpu", weights_only=True
-        )
+        # Path to model weights (loaded per-run, NOT kept in RAM)
+        self.model_state_dict_path: str = str(ws / "model_state_dict.pt")
 
         # Customer features (trimmed to max_customer_id)
         cf = np.load(ws / "customer_features.npz")
@@ -398,22 +400,26 @@ def _build_product_feature_batch(ws: WorkspaceData) -> dict[str, torch.Tensor]:
     }
 
 
-def _warm_start_retrain(model, purchases: list[tuple[int, int]], ws: WorkspaceData) -> None:
-    """Warm-start retrain on recent purchases (in-place). Subsamples if too many."""
+def _warm_start_retrain(
+    model, cids: np.ndarray, pids: np.ndarray, ws: WorkspaceData,
+) -> None:
+    """Warm-start retrain on recent purchase pairs (in-place).
+
+    Accepts pre-built numpy arrays (NOT Python lists) to avoid the
+    ~46 GB memory overhead of 360M Python tuples at 10M scale.
+    """
     from ml.train import TransactionDataset, collate_fn
     from ml.two_tower import TwoTowerModel
 
-    if len(purchases) < 10:
+    if len(cids) < 10:
         return
 
     # Subsample to cap compute time
-    if len(purchases) > MAX_RETRAIN_PAIRS:
+    if len(cids) > MAX_RETRAIN_PAIRS:
         rng = np.random.default_rng(42)
-        idx = rng.choice(len(purchases), size=MAX_RETRAIN_PAIRS, replace=False)
-        purchases = [purchases[i] for i in idx]
-
-    cids = np.array([p[0] for p in purchases], dtype=np.int64)
-    pids = np.array([p[1] for p in purchases], dtype=np.int64)
+        idx = rng.choice(len(cids), size=MAX_RETRAIN_PAIRS, replace=False)
+        cids = cids[idx]
+        pids = pids[idx]
 
     ds = TransactionDataset(
         cids, pids, ws.customer_features, ws.product_lookup,
@@ -661,11 +667,19 @@ def run_single_simulation(
     retrain_interval: int,
     ws: WorkspaceData,
 ) -> SimulationResult:
-    """Execute one full inner-loop simulation with vectorized consumer sim."""
+    """Execute one full inner-loop simulation with vectorized consumer sim.
+
+    Memory discipline at 10M scale:
+      - Model state dict loaded from disk, freed after model build (~2.5 GB saved)
+      - Purchases accumulated as numpy arrays, not Python tuples (~46 GB saved)
+      - Old rec arrays explicitly deleted before building new ones
+      - gc.collect() after major deallocations
+    """
+    import gc
     from simulation.vectorized_consumer import VectorizedConsumerSimulator
 
     seed = run_id
-    N = ws.max_customer_id - 1  # number of customers (0-indexed)
+    N = ws.max_customer_id - 1
     num_products = len(ws.product_ids)
 
     # ── Vectorized simulator ─────────────────────────────────────────
@@ -673,7 +687,6 @@ def run_single_simulation(
         seed=seed,
         num_customers=N,
         category_to_idx=ws.category_vocab,
-        catalog_pids=ws.catalog_pids,
         catalog_prices=ws.catalog_prices,
         catalog_weights=ws.catalog_weights,
     )
@@ -689,40 +702,76 @@ def run_single_simulation(
         },
     )
 
-    # ── Model (fresh copy per run — load_state_dict copies weights) ──
-    model = _build_model(ws.model_state_dict)
+    # ── Model: load from disk, free state dict immediately ───────────
+    state_dict = torch.load(
+        ws.model_state_dict_path, map_location="cpu", weights_only=True,
+    )
+    model = _build_model(state_dict)
+    del state_dict
+    gc.collect()
 
     # ── Initial recommendations from saved embeddings (chunked) ──────
     rec_pids, rec_cat_idx, rec_scores, rec_prices = (
         _initial_rerank_from_embeddings(ws)
     )
 
-    # ── Accumulated purchases for warm-start retrain ─────────────────
-    recent_purchases: list[tuple[int, int]] = []
+    # ── Purchase accumulation as numpy arrays (NOT Python tuples!) ────
+    # At 10M scale: ~6M rec purchases/epoch × 10 epochs = 60M pairs
+    # As numpy int64: 60M × 8 × 2 = 960 MB (vs 46 GB as Python tuples)
+    accum_cids: list[np.ndarray] = []
+    accum_pids: list[np.ndarray] = []
+    accum_total = 0
 
     for epoch in range(1, num_epochs + 1):
-        # Simulate one epoch
-        vresult = sim.simulate_epoch(rec_pids, rec_cat_idx, rec_scores, rec_prices)
+        vresult = sim.simulate_epoch(
+            rec_pids, rec_cat_idx, rec_scores, rec_prices,
+        )
 
-        # Metrics
         metrics = _compute_epoch_metrics(
             epoch, vresult, rec_pids, sim, num_products,
         )
         result.metrics.append(metrics)
 
-        # Accumulate purchases (convert 0-based index to 1-based customer_id)
-        for cid_idx, pid in zip(vresult.rec_purchase_cids, vresult.rec_purchase_pids):
-            recent_purchases.append((int(cid_idx) + 1, int(pid)))
-        for cid_idx, pid in zip(vresult.organic_purchase_cids, vresult.organic_purchase_pids):
-            recent_purchases.append((int(cid_idx) + 1, int(pid)))
+        # Accumulate recommended purchases only (0-based → 1-based)
+        if len(vresult.rec_purchase_cids) > 0:
+            accum_cids.append(vresult.rec_purchase_cids + 1)
+            accum_pids.append(vresult.rec_purchase_pids.copy())
+            accum_total += len(vresult.rec_purchase_cids)
+
+        # Cap accumulated data to prevent memory growth
+        if accum_total > MAX_RETRAIN_PAIRS * 2:
+            all_c = np.concatenate(accum_cids)
+            all_p = np.concatenate(accum_pids)
+            idx = np.random.default_rng(42).choice(
+                len(all_c), size=MAX_RETRAIN_PAIRS, replace=False,
+            )
+            accum_cids = [all_c[idx]]
+            accum_pids = [all_p[idx]]
+            accum_total = MAX_RETRAIN_PAIRS
+            del all_c, all_p
 
         # Warm-start retrain at interval boundaries
-        if epoch % retrain_interval == 0 and recent_purchases:
-            _warm_start_retrain(model, recent_purchases, ws)
+        if epoch % retrain_interval == 0 and accum_total > 0:
+            all_c = np.concatenate(accum_cids)
+            all_p = np.concatenate(accum_pids)
+
+            _warm_start_retrain(model, all_c, all_p, ws)
+            del all_c, all_p
+            accum_cids.clear()
+            accum_pids.clear()
+            accum_total = 0
+
+            # Free old rec arrays before allocating new ones
+            del rec_pids, rec_cat_idx, rec_scores, rec_prices
+            gc.collect()
+
             rec_pids, rec_cat_idx, rec_scores, rec_prices = (
                 _extract_and_rerank(model, ws)
             )
-            recent_purchases = []
+
+    # Free model before returning (next run will reload from disk)
+    del model
+    gc.collect()
 
     return result
 
@@ -758,9 +807,12 @@ def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
     ws_path = prepare_workspace(config)
 
     N = config.max_customer_id - 1
-    # Memory budget: ~9GB per worker at 10M, ~50MB at 10K
-    mem_per_worker_gb = max(0.05, N * 9.0 / 10_000_000)
-    available_gb = 50  # conservative, leave 14GB for OS + overhead
+    # Memory budget per worker (empirically measured):
+    #   10M customers: ~7 GB steady + 2.4 GB peak during rerank = ~9.4 GB
+    #   With model loaded from disk per-run (not held): saves 2.5 GB → ~7 GB
+    # Conservative: leave 16 GB for OS + DuckDB + Python overhead.
+    mem_per_worker_gb = max(0.1, N * 7.0 / 10_000_000)
+    available_gb = 48  # 64 GB - 16 GB headroom
     max_by_mem = max(1, int(available_gb / mem_per_worker_gb))
 
     n_workers = (
