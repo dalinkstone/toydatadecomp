@@ -230,6 +230,7 @@ class TestMiniTrainInfer:
                 "coupon_clip_rate": 0.1,
                 "coupon_redemption_rate": 0.05,
                 "organic_purchase_ratio": 0.8,
+                "tier": "organic_star",
             }
 
         # Load customer features (simplified)
@@ -249,6 +250,7 @@ class TestMiniTrainInfer:
             "coupon_engagement_score": np.zeros(max_cid, dtype=np.float32),
             "coupon_redemption_rate": np.zeros(max_cid, dtype=np.float32),
             "avg_basket_size": np.zeros(max_cid, dtype=np.float32),
+            "price_sensitivity_bucket": np.zeros(max_cid, dtype=np.int64),
         }
 
         for _, row in customers_df.iterrows():
@@ -289,13 +291,24 @@ class TestMiniTrainInfer:
         """).fetchdf()
         con.close()
 
-        from ml.train import TransactionDataset, collate_fn
+        from ml.train import CouponResponseDataset, collate_fn
 
-        dataset = TransactionDataset(
+        n_pairs = len(pairs)
+        elasticity_lookup = {int(pid): {"elasticity_beta": -1.0, "optimal_discount": 0.1}
+                             for pid in product_ids}
+        tier_vocab = {"coupon_loyalist": 1, "coupon_curious": 2, "organic_star": 3,
+                      "hidden_gem": 4, "unclassified": 5}
+
+        dataset = CouponResponseDataset(
             customer_ids=pairs["customer_id"].values,
             product_ids=pairs["product_id"].values,
+            discount_offers=np.zeros(n_pairs, dtype=np.float32),
+            labels=np.ones(n_pairs, dtype=np.float32),
+            weights=np.ones(n_pairs, dtype=np.float32),
             customer_features=customer_features,
             product_lookup=product_lookup,
+            elasticity_lookup=elasticity_lookup,
+            tier_vocab=tier_vocab,
             brand_vocab=brand_vocab,
             category_vocab=category_vocab,
             norm_stats=norm_stats,
@@ -318,6 +331,7 @@ class TestMiniTrainInfer:
             num_products=max(product_ids) + 1,
             num_categories=len(categories) + 1,
             num_brands=len(brands) + 1,
+            num_tiers=6,
             prod_embed_dim=16, cat_embed_dim=8, brand_embed_dim=8,
             hidden_dim=64, output_dim=64,
         )
@@ -328,9 +342,9 @@ class TestMiniTrainInfer:
         model.train()
         total_loss = 0.0
         batches = 0
-        for cust_batch, pos_batch, neg_batches, pos_margin in loader:
+        for cust_batch, pos_batch, neg_batches, labels, weights, pos_margin in loader:
             pos_scores, neg_scores = model(cust_batch, pos_batch, neg_batches)
-            loss = TwoTowerModel.compute_loss(pos_scores, neg_scores, pos_margin)
+            loss = TwoTowerModel.compute_loss(pos_scores, neg_scores, labels, weights, pos_margin)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -367,19 +381,25 @@ class TestMiniTrainInfer:
         product_ids = TestMiniTrainInfer._product_ids
         max_cid = TestMiniTrainInfer._max_cid
 
-        from ml.train import TransactionDataset
+        from ml.train import CouponResponseDataset
 
         model.eval()
 
+        elasticity_lookup = {int(pid): {"elasticity_beta": -1.0, "optimal_discount": 0.1}
+                             for pid in product_ids}
+        tier_vocab = {"coupon_loyalist": 1, "coupon_curious": 2, "organic_star": 3,
+                      "hidden_gem": 4, "unclassified": 5}
+
         # Extract product embeddings
-        dummy_ds = TransactionDataset(
-            np.array([1]), np.array([1]),
-            customer_features, product_lookup,
+        dummy_ds = CouponResponseDataset(
+            np.array([1]), np.array([1]), np.array([0.0]),
+            np.array([1.0]), np.array([1.0]),
+            customer_features, product_lookup, elasticity_lookup, tier_vocab,
             brand_vocab, category_vocab, norm_stats,
             num_products=len(product_ids), neg_samples=0,
         )
 
-        prod_feats_list = [dummy_ds._product_feats(pid) for pid in product_ids]
+        prod_feats_list = [dummy_ds._product_feats(pid, 0.0) for pid in product_ids]
         prod_batch = {
             "product_id": torch.tensor([x["product_id"] for x in prod_feats_list], dtype=torch.long),
             "category_id": torch.tensor([x["category_id"] for x in prod_feats_list], dtype=torch.long),
@@ -391,6 +411,10 @@ class TestMiniTrainInfer:
             "coupon_clip_rate": torch.tensor([x["coupon_clip_rate"] for x in prod_feats_list], dtype=torch.float32),
             "coupon_redemption_rate": torch.tensor([x["coupon_redemption_rate"] for x in prod_feats_list], dtype=torch.float32),
             "organic_purchase_ratio": torch.tensor([x["organic_purchase_ratio"] for x in prod_feats_list], dtype=torch.float32),
+            "tier_id": torch.tensor([x["tier_id"] for x in prod_feats_list], dtype=torch.long),
+            "elasticity_beta": torch.tensor([x["elasticity_beta"] for x in prod_feats_list], dtype=torch.float32),
+            "optimal_discount": torch.tensor([x["optimal_discount"] for x in prod_feats_list], dtype=torch.float32),
+            "discount_offer": torch.tensor([x["discount_offer"] for x in prod_feats_list], dtype=torch.float32),
         }
 
         with torch.no_grad():
@@ -411,6 +435,7 @@ class TestMiniTrainInfer:
             "coupon_engagement": torch.tensor([x["coupon_engagement"] for x in cust_feats_list], dtype=torch.float32),
             "coupon_redemption_rate": torch.tensor([x["coupon_redemption_rate"] for x in cust_feats_list], dtype=torch.float32),
             "avg_basket_size": torch.tensor([x["avg_basket_size"] for x in cust_feats_list], dtype=torch.float32),
+            "price_sensitivity_bucket": torch.tensor([x["price_sensitivity_bucket"] for x in cust_feats_list], dtype=torch.long),
         }
 
         with torch.no_grad():

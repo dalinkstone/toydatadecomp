@@ -152,6 +152,7 @@ def prepare_workspace(config: SimulationConfig) -> str:
         json.dump({
             "brand_vocab": ckpt["brand_vocab"],
             "category_vocab": ckpt["category_vocab"],
+            "tier_vocab": ckpt.get("tier_vocab", {}),
         }, f)
     with open(ws / "norm_stats.json", "w") as f:
         json.dump({k: list(v) for k, v in ckpt["norm_stats"].items()}, f)
@@ -170,8 +171,14 @@ def prepare_workspace(config: SimulationConfig) -> str:
 
     customer_features = fs.export_customer_lookup()
     product_lookup = fs.export_product_lookup()
+    elasticity_lookup = fs.export_elasticity_lookup()
     state_vocab = fs.export_state_vocab()
     fs.close()
+
+    # Elasticity lookup -> JSON
+    el_ser = {str(k): v for k, v in elasticity_lookup.items()}
+    with open(ws / "elasticity_lookup.json", "w") as f:
+        json.dump(el_ser, f)
 
     # Trim to active customers
     trimmed = {}
@@ -291,6 +298,16 @@ class WorkspaceData:
             v = json.load(f)
         self.brand_vocab: dict[str, int] = v["brand_vocab"]
         self.category_vocab: dict[str, int] = v["category_vocab"]
+        self.tier_vocab: dict[str, int] = v.get("tier_vocab", {})
+
+        # Elasticity lookup
+        el_path = ws / "elasticity_lookup.json"
+        if el_path.exists():
+            with open(el_path) as f:
+                raw_el = json.load(f)
+            self.elasticity_lookup: dict[int, dict] = {int(k): v for k, v in raw_el.items()}
+        else:
+            self.elasticity_lookup = {}
         with open(ws / "state_vocab.json") as f:
             self.state_vocab: dict[str, int] = json.load(f)
 
@@ -360,6 +377,7 @@ def _build_model(state_dict: dict):
         num_products=sd["product_tower.product_embed.weight"].shape[0],
         num_categories=sd["product_tower.category_embed.weight"].shape[0],
         num_brands=sd["product_tower.brand_embed.weight"].shape[0],
+        num_tiers=sd["product_tower.tier_embed.weight"].shape[0],
     )
     model = TwoTowerModel(ct, pt)
     model.load_state_dict(sd)
@@ -368,16 +386,23 @@ def _build_model(state_dict: dict):
 
 def _build_product_feature_batch(ws: WorkspaceData) -> dict[str, torch.Tensor]:
     """Build feature tensors for all products (used in embedding extraction)."""
-    pids, cat_ids, brand_ids = [], [], []
+    from ml.features import TIER_VOCAB
+
+    pids, cat_ids, brand_ids, tier_ids = [], [], [], []
     f_price, f_store, f_pop, f_margin = [], [], [], []
     f_clip, f_redeem, f_organic = [], [], []
+    f_elast, f_optdisc, f_disc_offer = [], [], []
+
+    el = getattr(ws, "elasticity_lookup", {})
 
     for pid in ws.product_ids:
         pid_int = int(pid)
         p = ws.product_lookup.get(pid_int, {})
+        e = el.get(pid_int, {})
         pids.append(pid_int)
         cat_ids.append(ws.category_vocab.get(str(p.get("category", "")), 0))
         brand_ids.append(ws.brand_vocab.get(str(p.get("brand", "")), 0))
+        tier_ids.append(TIER_VOCAB.get(str(p.get("tier", "")), 0))
         f_price.append(_norm(float(p.get("price", 0) or 0), "price", ws.norm_stats))
         f_store.append(float(p.get("is_store_brand", False)))
         f_pop.append(float(p.get("popularity_score", 0) or 0))
@@ -385,6 +410,9 @@ def _build_product_feature_batch(ws: WorkspaceData) -> dict[str, torch.Tensor]:
         f_clip.append(float(p.get("coupon_clip_rate", 0) or 0))
         f_redeem.append(float(p.get("coupon_redemption_rate", 0) or 0))
         f_organic.append(float(p.get("organic_purchase_ratio", 1) or 1))
+        f_elast.append(float(e.get("elasticity_beta", 0)))
+        f_optdisc.append(float(e.get("optimal_discount", 0)))
+        f_disc_offer.append(0.0)  # base embeddings use 0% discount
 
     return {
         "product_id": torch.tensor(pids, dtype=torch.long),
@@ -397,6 +425,10 @@ def _build_product_feature_batch(ws: WorkspaceData) -> dict[str, torch.Tensor]:
         "coupon_clip_rate": torch.tensor(f_clip, dtype=torch.float32),
         "coupon_redemption_rate": torch.tensor(f_redeem, dtype=torch.float32),
         "organic_purchase_ratio": torch.tensor(f_organic, dtype=torch.float32),
+        "tier_id": torch.tensor(tier_ids, dtype=torch.long),
+        "elasticity_beta": torch.tensor(f_elast, dtype=torch.float32),
+        "optimal_discount": torch.tensor(f_optdisc, dtype=torch.float32),
+        "discount_offer": torch.tensor(f_disc_offer, dtype=torch.float32),
     }
 
 
@@ -408,7 +440,7 @@ def _warm_start_retrain(
     Accepts pre-built numpy arrays (NOT Python lists) to avoid the
     ~46 GB memory overhead of 360M Python tuples at 10M scale.
     """
-    from ml.train import TransactionDataset, collate_fn
+    from ml.train import CouponResponseDataset, collate_fn
     from ml.two_tower import TwoTowerModel
 
     if len(cids) < 10:
@@ -421,8 +453,16 @@ def _warm_start_retrain(
         cids = cids[idx]
         pids = pids[idx]
 
-    ds = TransactionDataset(
-        cids, pids, ws.customer_features, ws.product_lookup,
+    n = len(cids)
+    el = getattr(ws, "elasticity_lookup", {})
+    tv = getattr(ws, "tier_vocab", {})
+
+    ds = CouponResponseDataset(
+        cids, pids,
+        np.zeros(n, dtype=np.float32),   # discount_offer=0 for warm-start
+        np.ones(n, dtype=np.float32),     # label=1 (all positive purchases)
+        np.ones(n, dtype=np.float32),     # weight=1
+        ws.customer_features, ws.product_lookup, el, tv,
         ws.brand_vocab, ws.category_vocab, ws.norm_stats,
         num_products=len(ws.product_lookup), neg_samples=ws.neg_samples,
     )
@@ -434,10 +474,10 @@ def _warm_start_retrain(
     model.train()
     opt = torch.optim.Adam(model.parameters(), lr=ws.retrain_lr)
     for _ in range(ws.retrain_epochs):
-        for cust_b, pos_b, neg_bs, pos_margin in loader:
+        for cust_b, pos_b, neg_bs, labels, weights, pos_margin in loader:
             opt.zero_grad(set_to_none=True)
             pos_s, neg_s = model(cust_b, pos_b, neg_bs)
-            loss = TwoTowerModel.compute_loss(pos_s, neg_s, pos_margin)
+            loss = TwoTowerModel.compute_loss(pos_s, neg_s, labels, weights, pos_margin)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             opt.step()
@@ -463,6 +503,7 @@ def _extract_customer_chunk(model, ws: WorkspaceData, cid_start: int, cid_end: i
             "coupon_engagement": torch.from_numpy(cf["coupon_engagement_score"][cid_start:cid_end].astype(np.float32).copy()),
             "coupon_redemption_rate": torch.from_numpy(cf["coupon_redemption_rate"][cid_start:cid_end].astype(np.float32).copy()),
             "avg_basket_size": torch.from_numpy(_vnorm(cf["avg_basket_size"][cid_start:cid_end], "avg_basket_size", ws.norm_stats)),
+            "price_sensitivity_bucket": torch.from_numpy(cf["price_sensitivity_bucket"][cid_start:cid_end].astype(np.int64).copy()),
         }
         emb = model.customer_tower(**batch).numpy()
     return emb

@@ -760,7 +760,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content active" id="tab-dashboard">
     <div class="hero">
       <h1>Pharmacy &amp; Consumer Wellness: Front Store Optimization</h1>
-      <p>Recommendation engine targeting $21.5B in front store revenue. Personalized coupons, inventory optimization, and margin protection across 8,979 retail locations.</p>
+      <p>Targeting $21.5B in front store revenue with smarter coupons, better inventory, and margin protection across 8,979 stores.</p>
     </div>
 
     <div class="kpi-grid">
@@ -813,7 +813,7 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="panel">
         <div class="panel-header">
           <h2>Product Tier Strategy</h2>
-          <p>Coupon-based segmentation from feature engineering</p>
+          <p>How we bucket products based on coupon behavior</p>
         </div>
         <div class="panel-body padded">
           <div class="tier-legend" style="margin-bottom:16px">
@@ -868,7 +868,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-products">
     <div class="hero" style="background:linear-gradient(135deg,#1A1A1A 0%,#333 100%)">
       <h1>Top Products by Revenue</h1>
-      <p>Ranked from 10B synthetic transactions. Tier assignments drive coupon strategy &mdash; different products get different treatment based on coupon engagement patterns.</p>
+      <p>Ranked from 10B synthetic transactions. Each tier gets a different coupon playbook based on how customers actually engage with discounts.</p>
     </div>
 
     <div class="kpi-grid">
@@ -893,7 +893,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="panel">
       <div class="panel-header">
         <h2>Revenue by Category</h2>
-        <p>OTC product categories ranked by total synthetic transaction revenue</p>
+        <p>OTC categories ranked by synthetic transaction revenue</p>
       </div>
       <div class="panel-body">
         <div class="bar-chart" id="categoryBars">
@@ -914,7 +914,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="panel">
       <div class="panel-header">
         <h2>Sample Product Tiles</h2>
-        <p>Representative products by tier &mdash; each tier gets a different coupon strategy</p>
+        <p>Sample products by tier &mdash; each one gets a different coupon approach</p>
       </div>
       <div class="panel-body padded">
         <div class="product-grid">
@@ -993,7 +993,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-coupons">
     <div class="hero" style="background:linear-gradient(135deg, #CC0000 0%, #E8384F 100%)">
       <h1>SmartRewards &amp; Digital Coupons</h1>
-      <p>16.4M coupon clip events across 10M customers. The SmartRewards program is one of the largest retail loyalty programs in the U.S. &mdash; our system optimizes it.</p>
+      <p>16.4M coupon clip events across 10M customers. We're building on top of one of the largest retail loyalty programs in the country.</p>
     </div>
 
     <div class="kpi-grid">
@@ -1036,7 +1036,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="panel">
       <div class="panel-header">
         <h2>Coupon Strategy Opportunities</h2>
-        <p>Personalized actions based on customer-product coupon behavior</p>
+        <p>Tailored moves for each customer-product pair</p>
       </div>
       <div class="panel-body padded">
         <div class="coupon-grid">
@@ -1054,7 +1054,7 @@ tbody tr:last-child td { border-bottom: none; }
           <div class="coupon-card">
             <div class="coupon-value">20% OFF</div>
             <div class="coupon-desc">Increase from 15% for Curious</div>
-            <div class="coupon-detail">Customer clipped but never purchased. A slightly sweeter deal may convert them.</div>
+            <div class="coupon-detail">Customer clipped but never bought. A better deal might get them over the line.</div>
             <div class="coupon-stats">
               <div>Clips: <span class="coupon-stat-val">Med</span></div>
               <div>Redemption: <span class="coupon-stat-val">0%</span></div>
@@ -1065,7 +1065,7 @@ tbody tr:last-child td { border-bottom: none; }
           <div class="coupon-card">
             <div class="coupon-value">NO COUPON</div>
             <div class="coupon-desc">Remove discount from Organic Stars</div>
-            <div class="coupon-detail">Product sells at full price. Discounting destroys margin with zero incremental volume.</div>
+            <div class="coupon-detail">Product sells at full price. Discounting just burns margin here.</div>
             <div class="coupon-stats">
               <div>Clips: <span class="coupon-stat-val">None</span></div>
               <div>Organic rate: <span class="coupon-stat-val">94%</span></div>
@@ -1078,7 +1078,7 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout info">
-      <strong>Bayesian approach:</strong> Given a customer has purchased item Y with a digital coupon N times, we can use Bayesian updating to estimate P(purchase | reduced discount). If the posterior probability exceeds a threshold, we reduce the discount. The prior is the base purchase rate; the likelihood is the observed coupon-purchase frequency. This gives us a mathematically grounded way to optimize coupon values per customer-product pair.
+      <strong>Bayesian approach:</strong> If a customer keeps buying something with a coupon, we use Bayesian updating to estimate how likely they are to buy at a smaller discount. When that probability is high enough, we cut the coupon. Simple prior (base purchase rate) + observed behavior = smarter discounts per customer-product pair.
     </div>
   </section>
 
@@ -1086,13 +1086,13 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-markets">
     <div class="hero" style="background:linear-gradient(135deg, #0066CC 0%, #004499 100%)">
       <h1>Markets &amp; Store Performance</h1>
-      <p>8,983 synthetic store locations mapped to real store IDs. Geographic distribution weighted by actual store density. Revenue per store enables targeted deployment.</p>
+      <p>8,983 synthetic stores mapped to real store IDs, weighted by actual store density. Revenue per store tells us where to deploy first.</p>
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <h2>Top Markets by Revenue (Synthetic)</h2>
-        <p>State-level aggregation from customer purchase features</p>
+        <p>State-level rollup from customer purchase data</p>
       </div>
       <div class="panel-body">
         <div class="bar-chart">
@@ -1130,7 +1130,7 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout warning">
-      <strong>Deployment implication:</strong> With ~250 fewer stores per year, any system-wide rollout must account for a shrinking deployment base. Start with 500 high-performing stores, measure for 90 days, then expand. Do not project system-wide results from a pilot.
+      <strong>Deployment note:</strong> We're losing ~250 stores a year, so any rollout has a shrinking base. Start with 500 high-performing stores, measure for 90 days, then expand. Don't extrapolate pilot results to the whole chain.
     </div>
   </section>
 
@@ -1138,7 +1138,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-financials">
     <div class="hero" style="background:linear-gradient(135deg, #1A1A1A 0%, #444 100%)">
       <h1>10-K Financial Reality</h1>
-      <p>All numbers directly from SEC 10-K filings. FY2024 (filed Feb 12, 2025) and FY2025 (filed Feb 10, 2026). These anchor every projection we make.</p>
+      <p>Straight from the SEC 10-K filings &mdash; FY2024 (filed Feb 12, 2025) and FY2025 (filed Feb 10, 2026). Every projection ties back to these.</p>
     </div>
 
     <div class="panel">
@@ -1204,7 +1204,7 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout warning">
-      <strong>Margin compression is the #1 financial reality.</strong> Gross margin has fallen from 21.7% to 18.5% in three years. This is why protecting margin on organic stars (stop discounting products that don't need it) may be more valuable than driving incremental volume.
+      <strong>Margin compression is the top concern.</strong> Gross margin dropped from 21.7% to 18.5% in three years. Protecting margin on organic stars &mdash; stop discounting stuff that sells fine without it &mdash; may matter more than chasing volume.
     </div>
 
     <div class="panel">
@@ -1233,7 +1233,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-projections">
     <div class="hero" style="background:linear-gradient(135deg, #008A00 0%, #006600 100%)">
       <h1>Revenue Impact: Conservative Projections</h1>
-      <p>Anchored to real 10-K numbers. We deliberately underestimate &mdash; it is better to over-deliver than to set aggressive targets that erode credibility.</p>
+      <p>Anchored to real 10-K numbers. We're intentionally conservative &mdash; better to beat the number than miss it.</p>
     </div>
 
     <div class="callout info">
@@ -1275,17 +1275,17 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
       <div class="panel-body padded">
         <div class="callout success">
-          <strong>The math:</strong> A 1-2% lift on $21.5B in front store revenue = $215-430M. That is real money. It does not need to be $2B to matter.
+          <strong>The math:</strong> 1-2% lift on $21.5B = $215-430M. That's real money. Doesn't need to be $2B to matter.
         </div>
         <div style="font-size:13px;line-height:1.8;color:var(--dd-gray-700)">
-          <p>The stock market has already priced in the decline ($6.47 &rarr; $3.66 &rarr; $1.39 EPS). If we project conservative numbers and beat them:</p>
+          <p>The market already priced in the decline ($6.47 &rarr; $3.66 &rarr; $1.39 EPS). If we go conservative and beat it:</p>
           <ol style="padding-left:20px;margin:8px 0">
-            <li>Stock re-rates upward on earnings surprise</li>
-            <li>Management credibility increases</li>
-            <li>Recommendation system gets more investment</li>
+            <li>Stock re-rates on the earnings surprise</li>
+            <li>Management builds credibility</li>
+            <li>The rec system gets more funding</li>
           </ol>
-          <p>If we project aggressive numbers and miss: credibility erosion, program gets cut.</p>
-          <p style="margin-top:12px"><strong>Given declining EPS, margin compression, and store closures, any projection above "moderate" would not be credible to investors or the board.</strong></p>
+          <p>If we swing big and miss: credibility tanks, program gets killed.</p>
+          <p style="margin-top:12px"><strong>With EPS falling, margins compressing, and stores closing, anything above "moderate" won't fly with investors or the board.</strong></p>
         </div>
       </div>
     </div>
@@ -1297,10 +1297,10 @@ tbody tr:last-child td { border-bottom: none; }
       <div class="panel-body padded" style="font-size:13px;color:var(--dd-gray-700);line-height:1.7">
         <ul style="padding-left:20px">
           <li><strong>Coupon waste continues:</strong> 65% of clips go unredeemed</li>
-          <li><strong>Hidden gems stay hidden:</strong> High-margin products remain undiscovered</li>
-          <li><strong>Organic stars get discounted:</strong> Uniform promotions destroy margin on products that don't need help</li>
-          <li><strong>No personalization:</strong> Every customer sees same offers</li>
-          <li><strong>Competitive gap widens:</strong> Retailers with recommendation systems continue pulling ahead</li>
+          <li><strong>Hidden gems stay hidden:</strong> High-margin products nobody finds</li>
+          <li><strong>Organic stars get discounted:</strong> Blanket promos eat margin on products that sell fine without them</li>
+          <li><strong>No personalization:</strong> Every customer sees the same offers</li>
+          <li><strong>Competitive gap widens:</strong> Other retailers with rec systems keep pulling ahead</li>
         </ul>
       </div>
     </div>
@@ -1310,11 +1310,11 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-shrinkage">
     <div class="hero" style="background:linear-gradient(135deg, #E87722 0%, #CC5500 100%)">
       <h1>Shrinkage &amp; Loss Prevention</h1>
-      <p>The company does NOT disclose specific shrinkage figures in the 10-K. Estimates below from Congressional testimony, NRF industry data, and analyst extrapolation. This is a defensive play &mdash; hedging retail losses.</p>
+      <p>No shrinkage figures in the 10-K. Estimates below come from Congressional testimony, NRF industry data, and analyst extrapolation. This is a defensive play &mdash; protecting what we already have.</p>
     </div>
 
     <div class="callout warning">
-      <strong>Disclaimer:</strong> Shrinkage estimates are NOT from the 10-K. They are sourced from public Congressional testimony by company executives (~$200M/year ORC losses), NRF industry averages (1.4-1.6% of sales), and analyst extrapolation.
+      <strong>Disclaimer:</strong> Shrinkage estimates are NOT from the 10-K. Sources: executive Congressional testimony (~$200M/year in ORC losses), NRF industry averages (1.4-1.6% of sales), and analyst extrapolation.
     </div>
 
     <div class="kpi-grid">
@@ -1357,13 +1357,13 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout warning">
-      <strong>Locked cases reduce sales 15-25%</strong> due to customer friction. RFID savings are mostly from admin error reduction, not theft. Self-checkout AI has extremely negative ROI at current costs. Loss prevention is defensive &mdash; it protects margin but doesn't drive growth.
+      <strong>Locked cases cut sales 15-25%</strong> because customers walk away. RFID savings come mostly from catching admin errors, not theft. Self-checkout AI is a money pit at current prices.
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <h2>Combined Revenue Opportunity</h2>
-        <p>Recommendation system + loss prevention together</p>
+        <p>Rec system + loss prevention combined</p>
       </div>
       <div class="panel-body padded">
         <div style="font-size:14px;line-height:1.8">
@@ -1376,7 +1376,7 @@ tbody tr:last-child td { border-bottom: none; }
           </table>
         </div>
         <div class="callout success" style="margin-top:16px">
-          <strong>On a $21.5B front store base, this is a 1.5-2.5% combined lift.</strong> Modest, credible, and achievable. This is the number we should present.
+          <strong>On $21.5B in front store revenue, that's a 1.5-2.5% combined lift.</strong> This is the number we should present.
         </div>
       </div>
     </div>
@@ -1406,8 +1406,8 @@ tbody tr:last-child td { border-bottom: none; }
         <h4>Model Architecture</h4>
         <a>Two-Tower Neural Network</a>
         <a>Customer &amp; Product Embeddings</a>
-        <a>256-dim L2-Normalized</a>
-        <a>Apple MPS Accelerated</a>
+        <a>256-dim Embeddings</a>
+        <a>MPS Accelerated</a>
       </div>
       <div>
         <h4>Pipeline</h4>
@@ -1418,8 +1418,8 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
     </div>
     <div class="footer-bottom">
-      <span>&copy; 2026 Analytics Dashboard &mdash; Internal Use Only &mdash; Data Decomp Analytics Platform</span>
-      <span>Built with Bun &bull; Zero Dependencies &bull; Single HTML File</span>
+      <span>&copy; 2026 Data Decomp &mdash; Internal use only</span>
+      <span>Bun &bull; No dependencies &bull; Single file</span>
     </div>
   </div>
 </footer>

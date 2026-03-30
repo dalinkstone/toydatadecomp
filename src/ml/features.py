@@ -81,8 +81,17 @@ _CUSTOMER_FEATURES_COLUMNS = """
 customer_id, age, gender, state, is_student,
 total_spend, avg_basket_size, total_transactions,
 coupon_clips_count, coupon_redeemed_count,
-coupon_redemption_rate, coupon_engagement_score
+coupon_redemption_rate, coupon_engagement_score,
+price_sensitivity_bucket
 """
+
+TIER_VOCAB = {
+    'coupon_loyalist': 1,
+    'coupon_curious': 2,
+    'organic_star': 3,
+    'hidden_gem': 4,
+    'unclassified': 5,
+}
 
 
 class FeatureStore:
@@ -128,9 +137,10 @@ class FeatureStore:
             CREATE OR REPLACE TABLE _cust_txn_agg AS
             SELECT
                 customer_id,
-                COUNT(*)      AS total_transactions,
-                SUM(total)    AS total_spend,
-                AVG(total)    AS avg_basket_size
+                COUNT(*)           AS total_transactions,
+                SUM(total)         AS total_spend,
+                AVG(total)         AS avg_basket_size,
+                AVG(discount_pct)  AS avg_discount_pct
             FROM transactions
             GROUP BY customer_id
         """)
@@ -174,7 +184,14 @@ class FeatureStore:
                 CASE WHEN COALESCE(ct.total_transactions, 0) > 0
                      THEN COALESCE(cc.total_clips, 0) * 1.0 / ct.total_transactions
                      ELSE 0.0
-                END                                      AS coupon_engagement_score
+                END                                      AS coupon_engagement_score,
+                CASE
+                    WHEN COALESCE(ct.avg_discount_pct, 0) < 0.05 THEN 0
+                    WHEN COALESCE(ct.avg_discount_pct, 0) < 0.10 THEN 1
+                    WHEN COALESCE(ct.avg_discount_pct, 0) < 0.15 THEN 2
+                    WHEN COALESCE(ct.avg_discount_pct, 0) < 0.20 THEN 3
+                    ELSE 4
+                END                                      AS price_sensitivity_bucket
             FROM customers cu
             LEFT JOIN _cust_txn_agg ct ON cu.customer_id = ct.customer_id
             LEFT JOIN _cust_coupon_agg cc ON cu.customer_id = cc.customer_id
@@ -248,6 +265,123 @@ class FeatureStore:
         n = self.con.execute("SELECT COUNT(*) FROM training_pairs").fetchone()[0]
         console.print(f"  training_pairs: {n:,} rows ({time.time() - t0:.1f}s)")
 
+    def build_coupon_response_pairs(self, sample_pct: float = 1.0):
+        """Build labeled training pairs for coupon response model.
+
+        Three types of examples:
+        1. Coupon response (from coupon_clips): label=redeemed, weight=1.0
+        2. Discount purchases (discount_pct > 0): label=1, weight=1.0
+        3. Organic purchases (discount_pct = 0): label=1, weight=0.5
+
+        Target mix: ~30% coupon / 40% discount / 30% organic (positives only).
+        """
+        t0 = time.time()
+        console.print("[cyan]Building coupon response training pairs...[/cyan]")
+
+        # Single scan of transactions, split by discount
+        console.print(f"  Sampling transactions ({sample_pct}%)...")
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE _sampled_txns AS
+            SELECT customer_id, product_id, discount_pct
+            FROM transactions
+            USING SAMPLE {sample_pct} PERCENT (bernoulli)
+        """)
+
+        counts = self.con.execute("""
+            SELECT
+                SUM(CASE WHEN discount_pct > 0 THEN 1 ELSE 0 END) AS n_disc,
+                SUM(CASE WHEN discount_pct = 0 THEN 1 ELSE 0 END) AS n_org
+            FROM _sampled_txns
+        """).fetchone()
+        n_disc_raw, n_org_raw = int(counts[0] or 0), int(counts[1] or 0)
+        console.print(f"    Sampled txns: {n_disc_raw + n_org_raw:,} "
+                      f"(disc: {n_disc_raw:,}, org: {n_org_raw:,})")
+
+        # Coupon examples: subsample to achieve ~30% of total positives
+        # Target: coupon = purchase_total * 3/7 (so 30% of combined total)
+        n_purchase_total = n_disc_raw + n_org_raw
+        n_coupon_target = int(n_purchase_total * 3 / 7)
+        n_total_clips = self.con.execute("SELECT COUNT(*) FROM coupon_clips").fetchone()[0]
+
+        if n_total_clips <= n_coupon_target or n_coupon_target == 0:
+            coupon_sample_clause = ""
+        else:
+            coupon_pct = n_coupon_target / n_total_clips * 100
+            coupon_sample_clause = f"USING SAMPLE {coupon_pct:.4f} PERCENT (bernoulli)"
+
+        console.print(f"  Building coupon examples (target: {n_coupon_target:,} "
+                      f"from {n_total_clips:,} clips)...")
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE _coupon_examples AS
+            SELECT
+                cu.customer_id,
+                cc.product_id::BIGINT AS product_id,
+                CASE
+                    WHEN cc.discount_type = 'percent_off'
+                        THEN LEAST(cc.discount_value, 0.50)
+                    WHEN cc.discount_type = 'bogo' THEN 0.50
+                    WHEN cc.discount_type = 'dollar_off'
+                        THEN LEAST(cc.discount_value / NULLIF(p.price, 0), 0.50)
+                    ELSE 0.10
+                END AS discount_offer,
+                CASE WHEN cc.redeemed THEN 1.0 ELSE 0.0 END AS label,
+                1.0 AS weight
+            FROM (SELECT * FROM coupon_clips {coupon_sample_clause}) cc
+            JOIN customers cu ON cc.loyalty_number = cu.loyalty_number
+            JOIN products p ON cc.product_id = p.product_id
+        """)
+        n_coupon = self.con.execute("SELECT COUNT(*) FROM _coupon_examples").fetchone()[0]
+
+        # Subsample disc/org to achieve 40/30 ratio relative to coupon at 30%
+        # If coupon is N at 30%, disc should be N*4/3, org should be N
+        n_disc_target = int(n_coupon * 4 / 3)
+        n_org_target = n_coupon
+
+        if n_disc_raw > n_disc_target and n_disc_target > 0:
+            disc_frac = n_disc_target / n_disc_raw
+        else:
+            disc_frac = 1.0
+
+        if n_org_raw > n_org_target and n_org_target > 0:
+            org_frac = n_org_target / n_org_raw
+        else:
+            org_frac = 1.0
+
+        # Union all into final table
+        console.print("  Combining training data...")
+        self.con.execute(f"""
+            CREATE OR REPLACE TABLE training_pairs_labeled AS
+            SELECT customer_id, product_id, discount_offer, label, weight
+            FROM _coupon_examples
+            UNION ALL
+            SELECT customer_id, product_id, discount_pct AS discount_offer,
+                   1.0 AS label, 1.0 AS weight
+            FROM _sampled_txns
+            WHERE discount_pct > 0
+            {"AND RANDOM() < " + str(disc_frac) if disc_frac < 1.0 else ""}
+            UNION ALL
+            SELECT customer_id, product_id, 0.0 AS discount_offer,
+                   1.0 AS label, 0.5 AS weight
+            FROM _sampled_txns
+            WHERE discount_pct = 0
+            {"AND RANDOM() < " + str(org_frac) if org_frac < 1.0 else ""}
+        """)
+
+        # Clean up staging tables
+        self.con.execute("DROP TABLE IF EXISTS _sampled_txns")
+        self.con.execute("DROP TABLE IF EXISTS _coupon_examples")
+
+        total = self.con.execute("SELECT COUNT(*) FROM training_pairs_labeled").fetchone()[0]
+        n_disc_final = self.con.execute(
+            "SELECT COUNT(*) FROM training_pairs_labeled WHERE weight = 1.0 AND label = 1.0 AND discount_offer > 0"
+        ).fetchone()[0]
+        n_org_final = self.con.execute(
+            "SELECT COUNT(*) FROM training_pairs_labeled WHERE weight = 0.5"
+        ).fetchone()[0]
+        console.print(f"  training_pairs_labeled: {total:,} examples "
+                      f"(coupon: {n_coupon:,}, disc: {n_disc_final:,}, org: {n_org_final:,}) "
+                      f"({time.time() - t0:.1f}s)")
+
     def export_customer_lookup(self) -> dict[str, np.ndarray]:
         """Export customer features as numpy arrays indexed by customer_id.
 
@@ -288,6 +422,11 @@ class FeatureStore:
         arr = np.zeros(size, dtype=np.int64)
         arr[cids] = df["state"].map(state_vocab).fillna(0).values.astype(np.int64)
         result["state"] = arr
+
+        # Price sensitivity bucket (int 0-4)
+        arr = np.zeros(size, dtype=np.int64)
+        arr[cids] = df["price_sensitivity_bucket"].values.astype(np.int64)
+        result["price_sensitivity_bucket"] = arr
 
         console.print(f"  Exported {len(result)} feature arrays, shape ({size},)")
         return result
@@ -332,6 +471,45 @@ class FeatureStore:
         console.print(f"  Loaded {len(cids):,} pairs")
         return cids, pids
 
+    def export_coupon_training_data(self):
+        """Export labeled training pairs as numpy arrays.
+
+        Returns (customer_ids, product_ids, discount_offers, labels, weights).
+        """
+        console.print("[cyan]Loading labeled training pairs...[/cyan]")
+        df = self.con.execute(
+            "SELECT customer_id, product_id, discount_offer, label, weight "
+            "FROM training_pairs_labeled"
+        ).fetchdf()
+        console.print(f"  Loaded {len(df):,} labeled pairs")
+        return (
+            df["customer_id"].values.astype(np.int64),
+            df["product_id"].values.astype(np.int64),
+            df["discount_offer"].values.astype(np.float32),
+            df["label"].values.astype(np.float32),
+            df["weight"].values.astype(np.float32),
+        )
+
+    def export_elasticity_lookup(self) -> dict[int, dict]:
+        """Load elasticity data from parquet, keyed by product_id."""
+        console.print("[cyan]Loading elasticity data...[/cyan]")
+        df = self.con.execute(
+            "SELECT product_id, elasticity_beta, optimal_discount "
+            "FROM read_parquet('data/model/elasticity.parquet')"
+        ).fetchdf()
+        lookup = {}
+        for _, row in df.iterrows():
+            lookup[int(row["product_id"])] = {
+                "elasticity_beta": float(row["elasticity_beta"]),
+                "optimal_discount": float(row["optimal_discount"]),
+            }
+        console.print(f"  Loaded elasticity for {len(lookup)} products")
+        return lookup
+
+    def export_tier_vocab(self) -> dict[str, int]:
+        """Return tier string to integer mapping (0 = unknown)."""
+        return dict(TIER_VOCAB)
+
     def export_normalization_stats(self) -> dict[str, tuple[float, float]]:
         """Compute mean/std for features that need normalization."""
         stats = {}
@@ -359,7 +537,8 @@ class FeatureStore:
 
     def has_features(self) -> bool:
         """Check if all feature tables already exist."""
-        needed = {"product_features", "customer_features", "product_tiers", "training_pairs"}
+        needed = {"product_features", "customer_features", "product_tiers",
+                  "training_pairs_labeled"}
         return needed.issubset(self._existing_tables())
 
     def close(self):
@@ -404,6 +583,7 @@ def main(db_path: str, sample_pct: float, skip_txn_scan: bool):
 
         fs.build_product_tiers()
         fs.build_training_pairs(sample_pct)
+        fs.build_coupon_response_pairs(sample_pct)
 
     elapsed = time.time() - t0
     console.print(f"\n[bold green]Feature engineering complete[/bold green] ({elapsed:.1f}s)")
