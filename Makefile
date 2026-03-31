@@ -108,9 +108,15 @@ CUSTOMERS ?= 0
 simulate:
 	$(PYTHON) src/cli.py simulate run --epochs $(EPOCHS) --runs $(RUNS) \
 		--retrain-interval $(RETRAIN_INTERVAL) --scale $(SCALE) --customers $(CUSTOMERS)
+	$(PYTHON) src/cli.py validate revenue
+	.venv/bin/jupyter nbconvert --to notebook --execute --inplace notebooks/analysis.ipynb
+	@echo "✓ Notebook updated: notebooks/analysis.ipynb"
 
 simulate-demo:
 	$(PYTHON) src/cli.py simulate run --epochs 40 --runs 10 --retrain-interval 10 --scale demo
+	$(PYTHON) src/cli.py validate revenue
+	.venv/bin/jupyter nbconvert --to notebook --execute --inplace notebooks/analysis.ipynb
+	@echo "✓ Notebook updated: notebooks/analysis.ipynb"
 
 # --------------------------------------------------------------------------
 # Testing & validation
