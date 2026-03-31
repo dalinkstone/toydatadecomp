@@ -9,6 +9,7 @@ data/synthetic/transactions/*.csv.gz
 data/synthetic/transactions/*.csv
 data/db/*.duckdb
 data/db/*.duckdb.wal
+data/db/*.duckdb.tmp/
 data/model/
 data/results/
 

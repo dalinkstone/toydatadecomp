@@ -99,8 +99,8 @@ rank:
 # --------------------------------------------------------------------------
 # Monte Carlo Simulation
 # --------------------------------------------------------------------------
-EPOCHS ?= 250
-RUNS ?= 75
+EPOCHS ?= 40
+RUNS ?= 50
 RETRAIN_INTERVAL ?= 10
 SCALE ?= full
 CUSTOMERS ?= 0
@@ -110,7 +110,7 @@ simulate:
 		--retrain-interval $(RETRAIN_INTERVAL) --scale $(SCALE) --customers $(CUSTOMERS)
 
 simulate-demo:
-	$(PYTHON) src/cli.py simulate run --epochs 50 --runs 10 --retrain-interval 10 --scale demo
+	$(PYTHON) src/cli.py simulate run --epochs 40 --runs 10 --retrain-interval 10 --scale demo
 
 # --------------------------------------------------------------------------
 # Testing & validation

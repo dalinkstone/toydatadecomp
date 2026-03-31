@@ -388,8 +388,8 @@ def simulate():
 
 
 @simulate.command("run")
-@click.option("--epochs", default=250, help="Epochs per simulation run.")
-@click.option("--runs", default=75, help="Number of Monte Carlo runs.")
+@click.option("--epochs", default=40, help="Epochs per simulation run (1 epoch = 1 week).")
+@click.option("--runs", default=50, help="Number of Monte Carlo runs.")
 @click.option("--retrain-interval", default=10, help="Retrain every N epochs.")
 @click.option("--scale", default="full", type=click.Choice(["demo", "full"]),
               help="Scale: demo (10K customers) or full (all customers).")
