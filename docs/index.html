@@ -607,14 +607,71 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="section">
-      <h2>The Approach</h2>
-      <p>We trained a two-tower neural network on 10 billion synthetic transactions to learn which products each of 10 million customers is most likely to buy. Products are classified into tiers based on how they respond to discounts, and each tier gets a different coupon strategy:</p>
+      <h2>What We Built</h2>
+      <p>The starting point was simple: could we use regression to figure out which discounts actually move volume? It took about five minutes of reading to realize that plain linear regression wouldn't scale to 10 billion transactions across 12,000 products. So we built something better.</p>
+    </div>
+
+    <div class="section">
+      <h2>The Synthetic Data</h2>
+      <p>We don't have access to real CVS transaction data, so we generated our own &mdash; 10 billion transactions across 10 million customer profiles and 12,000 real CVS products scraped from cvs.com. The synthetic data is not random. Every distribution is calibrated to match what we know from the 10-K filings and retail industry benchmarks:</p>
+      <ul>
+        <li><strong>Product selection</strong> follows a Zipf distribution (exponent 1.07), which mirrors the heavy-tailed purchasing pattern in real retail &mdash; a small number of products account for most sales</li>
+        <li><strong>Basket sizes</strong> follow a triangular distribution (min 1, mode 4, max 12 items), matching typical pharmacy/convenience basket patterns</li>
+        <li><strong>Customer demographics</strong> are age-weighted toward the pharmacy-skewing population (older customers over-represented) with state distribution proportional to real CVS store density</li>
+        <li><strong>Coupon behavior</strong> is generated with age-dependent clip rates and type-specific redemption rates (dollar-off at 45%, percent-off at 35%, BOGO at 25%) matching industry averages</li>
+        <li><strong>Seasonal effects</strong> are baked in &mdash; cold/flu products spike 2.5x in winter, sunscreen 1.8x in summer</li>
+      </ul>
+      <p>The transaction generator itself is written in C for performance &mdash; it produces 10 billion rows in under an hour on a single machine.</p>
+    </div>
+
+    <div class="section">
+      <h2>The Two-Tower Neural Network</h2>
+      <p>The recommendation model is a <strong>two-tower (dual encoder) neural network</strong> built in PyTorch. One tower learns a 256-dimensional embedding for each customer; the other learns a 256-dimensional embedding for each product. To predict how likely a customer is to buy a product, we take the dot product of their two embeddings &mdash; similar customers and similar products end up near each other in embedding space.</p>
+      <p>The model trains on observed purchase pairs with 4 negative samples per positive example (products the customer <em>didn't</em> buy). The loss function is binary cross-entropy, weighted by product margin so the model prioritizes high-margin recommendations. Training uses the Adam optimizer with cosine annealing and gradient clipping.</p>
+    </div>
+
+    <div class="section">
+      <h2>Price Elasticity via Weighted Least Squares</h2>
+      <p>To figure out which products actually respond to discounts, we run a <strong>weighted least squares regression</strong> on 16 million coupon clip events. The model is log-linear: <code>log(redemption_rate) = &alpha; + &beta; &times; discount_level</code>, weighted by clip volume at each discount tier. Products with a strongly negative beta are price-elastic &mdash; discounts move real volume. Products with a beta near zero sell the same regardless. This is the core of the "which discounts actually work" question.</p>
+    </div>
+
+    <div class="section">
+      <h2>Breakout Scoring via Cosine Similarity</h2>
+      <p>To find which long-tail products have breakout potential, we use <strong>cosine similarity</strong> between product embeddings. We compute a Tier 1 centroid (the average embedding of the top 50 products), then measure how close each Tier 4 product sits in embedding space. Products that look like top sellers but aren't selling yet are the breakout candidates. The final score blends cosine similarity with price ratio, category overlap, and estimated discount-to-break-in.</p>
+    </div>
+
+    <div class="section">
+      <h2>The Product Tiers</h2>
       <div class="callout info">
         <strong>Tier 1 &mdash; Core Drivers</strong> (50 products): Always in the basket. Small, personalized discount by price sensitivity.<br><br>
         <strong>Tier 2 &mdash; Discount-Responsive</strong> (~6,000 products): Sell significantly more with coupons. Each customer gets a personalized top-8 offer set based on purchase probability and price elasticity.<br><br>
         <strong>Tier 4 &mdash; Breakout Candidates</strong> (~6,000 products): Low volume today, but 100 have profiles similar to top sellers. Targeted trial offers to see which can graduate.
       </div>
-      <p>We then ran a Monte Carlo simulation &mdash; 40 weekly epochs where the model recommends, consumers respond, and the model retrains on blended data. Multiple runs with different random seeds give us confidence intervals on every metric.</p>
+    </div>
+
+    <div class="section">
+      <h2>The Monte Carlo Simulation</h2>
+      <p>A single prediction doesn't tell you much. To test whether the recommendation system actually works over time, we run a <strong>Monte Carlo simulation</strong> &mdash; multiple independent replications of a 40-week feedback loop:</p>
+      <ol>
+        <li><strong>Recommend:</strong> The model scores every customer-product pair and selects the top-8 coupon offers per customer per week</li>
+        <li><strong>Respond:</strong> Simulated consumers decide whether to buy using a calibrated sigmoid probability model, with per-product fatigue (3 consecutive ignored offers triggers a cooldown), per-category fatigue, and seasonal multipliers</li>
+        <li><strong>Retrain:</strong> Every 10 weeks, the model retrains on a 70/30 blend of original training data and new simulation-generated purchases, at a fine-tuning learning rate (1e-4)</li>
+        <li><strong>Repeat:</strong> Multiple runs with different random seeds &mdash; each run randomizes fatigue steepness and halo effect probabilities &mdash; produce confidence intervals on every metric</li>
+      </ol>
+      <p>Revenue is calibrated to the CVS 10-K: 10 million customers represent 13.5% of 74 million ExtraCare members, so the weekly revenue target is $57.1M (proportional share of $21.5B annual front store revenue). The simulation doesn't just check if the model makes good recommendations &mdash; it checks whether the <em>business</em> works over time as consumer behavior evolves and the model adapts.</p>
+    </div>
+
+    <div class="section">
+      <h2>How We Used the 10-K Filings</h2>
+      <p>Every number in this analysis traces back to two documents: the CVS Health 10-K filed February 12, 2025 (FY2024) and February 10, 2026 (FY2025). We extracted specific figures from the SEC filings and used them as guardrails at every stage:</p>
+      <ul>
+        <li><strong>Revenue calibration:</strong> Front store revenue of $21.5B (FY2025) and the 74M ExtraCare membership set the simulation's weekly revenue target of $57.1M for our 10M-customer subset</li>
+        <li><strong>Margin floor:</strong> The P&amp;CW segment gross margin of 18.5% (FY2025, down from 21.7% in FY2023) sets the constraint &mdash; the discount rate cannot be so aggressive that it pushes margin below what the business already delivers</li>
+        <li><strong>Store footprint:</strong> 8,979 stores at end of FY2025 (net -156 vs prior year) informs the deployment strategy &mdash; we're working with a shrinking base</li>
+        <li><strong>Same-store sales:</strong> Front store SSS of +0.3%, -2.1%, +1.2% over three years tells us where the bar is &mdash; even a 1% lift is a meaningful reversal of a flat trajectory</li>
+        <li><strong>Validation targets:</strong> Average basket size ($30-40), coupon redemption rates (15-25%), and visit frequency are benchmarked against publicly available retail and pharmacy industry data to confirm the simulation produces plausible consumer behavior</li>
+      </ul>
+      <p>The 10-K numbers are not inputs to the model &mdash; the model is trained on synthetic transaction data. The 10-K numbers are the <em>test</em>. If the simulation produces revenue, margins, and consumer behavior that match what CVS actually reports, the model is producing plausible results.</p>
     </div>
   </section>
 
