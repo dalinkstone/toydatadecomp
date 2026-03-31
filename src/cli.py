@@ -12,7 +12,8 @@ Usage:
     python src/cli.py load
     python src/cli.py train
     python src/cli.py infer
-    python src/cli.py validate
+    python src/cli.py validate data
+    python src/cli.py validate revenue --simulation-dir data/results/simulation/
     python src/cli.py tier products
     python src/cli.py elasticity estimate --sample-pct 2
     python src/cli.py simulate run --epochs 250 --runs 75
@@ -447,13 +448,31 @@ def simulate_status(output_dir):
 # validate
 # ═══════════════════════════════════════════════════════════════════════
 
-@toydatadecomp.command()
+@toydatadecomp.group()
+def validate():
+    """Validation checks (data integrity, revenue benchmarks)."""
+    pass
+
+
+@validate.command("data")
 @click.option("--db-path", default="data/db/cvs_analytics.duckdb")
-def validate(db_path):
+def validate_data(db_path):
     """Run data validation checks."""
     from db.load_duckdb import validate as _validate
     console.print("[bold]→ Running validation...[/bold]")
     _validate(["--db-path", db_path], standalone_mode=False)
+
+
+@validate.command("revenue")
+@click.option("--simulation-dir", default="data/results/simulation/",
+              help="Directory containing simulation output.")
+@click.option("--model-dir", default="data/model/",
+              help="Directory containing product_tiers.parquet.")
+def validate_revenue(simulation_dir, model_dir):
+    """Validate simulation revenue against CVS 10-K benchmarks."""
+    from ml.validate_revenue import validate_revenue as _validate
+    console.print("[bold]→ Running revenue validation against 10-K benchmarks...[/bold]")
+    _validate(simulation_dir, model_dir)
 
 
 # ═══════════════════════════════════════════════════════════════════════
