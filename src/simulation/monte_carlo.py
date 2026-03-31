@@ -99,6 +99,10 @@ class EpochMetrics:
     organic_revenue: float
     discount_cost: float
     net_revenue: float
+    incremental_revenue: float
+    cannibalized_revenue: float
+    gross_roi: float
+    incremental_roi: float
     hit_rate_at_5: float
     hit_rate_at_2: float
     catalog_coverage: float
@@ -267,11 +271,18 @@ def prepare_workspace(config: SimulationConfig) -> str:
             prices[idx] = float(info.get("price", 10.0) or 10.0)
             popularity[idx] = float(info.get("popularity_score", 0.01) or 0.01)
 
+    organic_ratios = np.ones(n_prod, dtype=np.float32)
+    for pid, info in product_lookup.items():
+        idx = pid_to_idx.get(int(pid))
+        if idx is not None:
+            organic_ratios[idx] = float(info.get("organic_purchase_ratio", 1) or 1)
+
     np.save(ws / "product_ids.npy", product_ids)
     np.save(ws / "product_categories.npy", categories)
     np.save(ws / "product_margins.npy", margins)
     np.save(ws / "product_prices.npy", prices)
     np.save(ws / "product_popularity.npy", popularity)
+    np.save(ws / "product_organic_ratios.npy", organic_ratios)
 
     cat_vocab = ckpt["category_vocab"]
     cat_idx_arr = np.zeros(n_prod, dtype=np.int32)
@@ -522,6 +533,9 @@ class WorkspaceData:
         self.product_cat_idx: np.ndarray = np.load(ws / "product_cat_idx.npy")
         self.product_margins: np.ndarray = np.load(ws / "product_margins.npy")
         self.product_prices: np.ndarray = np.load(ws / "product_prices.npy")
+        self.product_organic_ratios: np.ndarray = np.load(
+            ws / "product_organic_ratios.npy"
+        )
         self.pid_to_idx: dict[int, int] = {
             int(p): i for i, p in enumerate(self.product_ids)
         }
@@ -830,6 +844,7 @@ def _score_chunk_offers(
     offer_discounts: np.ndarray,
     offer_tiers: np.ndarray,
     offer_cat_idx: np.ndarray,
+    offer_organic_ratios: np.ndarray,
 ) -> None:
     """Score one chunk of customers against tier-specific products and
     fill the corresponding rows of the output offer arrays."""
@@ -853,6 +868,9 @@ def _score_chunk_offers(
             )
             offer_tiers[start:start + cn, j] = 2
             offer_cat_idx[start:start + cn, j] = ws.product_cat_idx[pidx]
+            offer_organic_ratios[start:start + cn, j] = (
+                ws.product_organic_ratios[pidx]
+            )
 
     # ── Tier 4 breakout: top-2 ──
     if breakout_emb_t is not None and len(breakout_idx) > 0:
@@ -871,6 +889,9 @@ def _score_chunk_offers(
             )
             offer_tiers[start:start + cn, slot] = 4
             offer_cat_idx[start:start + cn, slot] = ws.product_cat_idx[pidx]
+            offer_organic_ratios[start:start + cn, slot] = (
+                ws.product_organic_ratios[pidx]
+            )
 
     # ── Exploration slot (slot 7) ──
     if len(tier4_all_idx) > 0:
@@ -885,10 +906,13 @@ def _score_chunk_offers(
         ).astype(np.float32)
         offer_tiers[start:start + cn, 7] = 4
         offer_cat_idx[start:start + cn, 7] = ws.product_cat_idx[exp_idx]
+        offer_organic_ratios[start:start + cn, 7] = (
+            ws.product_organic_ratios[exp_idx]
+        )
 
 
 def _alloc_offer_arrays(N: int, K: int):
-    """Allocate the six (N, K) offer arrays."""
+    """Allocate the seven (N, K) offer arrays."""
     return (
         np.zeros((N, K), dtype=np.int64),    # pids
         np.zeros((N, K), dtype=np.float32),  # scores
@@ -896,6 +920,7 @@ def _alloc_offer_arrays(N: int, K: int):
         np.zeros((N, K), dtype=np.float32),  # discounts
         np.zeros((N, K), dtype=np.int8),     # tiers
         np.zeros((N, K), dtype=np.int32),    # cat_idx
+        np.ones((N, K), dtype=np.float32),   # organic_ratios (default 1.0)
     )
 
 
@@ -1023,6 +1048,14 @@ def _compute_epoch_metrics(
         vresult.tier4_conversions / max(vresult.tier4_offers, 1)
     )
 
+    dc = vresult.discount_cost
+    gross_roi = (
+        vresult.recommended_revenue / dc if dc > 0 else 0.0
+    )
+    incremental_roi = (
+        vresult.incremental_revenue / dc if dc > 0 else 0.0
+    )
+
     return EpochMetrics(
         epoch=epoch,
         total_revenue=vresult.total_revenue,
@@ -1030,6 +1063,10 @@ def _compute_epoch_metrics(
         organic_revenue=vresult.organic_revenue,
         discount_cost=vresult.discount_cost,
         net_revenue=vresult.net_revenue,
+        incremental_revenue=vresult.incremental_revenue,
+        cannibalized_revenue=vresult.cannibalized_revenue,
+        gross_roi=gross_roi,
+        incremental_roi=incremental_roi,
         hit_rate_at_5=hit5,
         hit_rate_at_2=hit2,
         catalog_coverage=coverage,
@@ -1326,6 +1363,8 @@ def run_monte_carlo(config: SimulationConfig) -> list[SimulationResult]:
 TRACKED_METRICS = [
     "total_revenue", "recommended_revenue", "organic_revenue",
     "discount_cost", "net_revenue",
+    "incremental_revenue", "cannibalized_revenue",
+    "gross_roi", "incremental_roi",
     "hit_rate_at_5", "hit_rate_at_2",
     "catalog_coverage", "tier_migration_count",
     "active_customer_pct", "mean_coupons_per_customer",

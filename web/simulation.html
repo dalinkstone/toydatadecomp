@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Decomp | Monte Carlo Simulation Results</title>
+<style>
+/* ===== DD Brand System (shared with index.html) ===== */
+:root {
+  --dd-red: #CC0000;
+  --dd-red-dark: #A30000;
+  --dd-red-light: #E8384F;
+  --dd-black: #1A1A1A;
+  --dd-gray-900: #333333;
+  --dd-gray-700: #555555;
+  --dd-gray-500: #888888;
+  --dd-gray-300: #CCCCCC;
+  --dd-gray-100: #F4F4F4;
+  --dd-white: #FFFFFF;
+  --dd-bg: #F7F7F7;
+  --dd-green: #008A00;
+  --dd-blue: #0066CC;
+  --dd-orange: #E87722;
+  --dd-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --dd-shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+  --dd-radius: 8px;
+  --dd-font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --max-w: 1280px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--dd-font);
+  background: var(--dd-bg);
+  color: var(--dd-black);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== Top Banner ===== */
+.top-banner {
+  background: var(--dd-red);
+  color: var(--dd-white);
+  text-align: center;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ===== Header ===== */
+.header {
+  background: var(--dd-white);
+  border-bottom: 1px solid var(--dd-gray-300);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-inner {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 12px 24px;
+  gap: 24px;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.logo-heart { width: 32px; height: 28px; }
+
+.logo-text {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--dd-red);
+  letter-spacing: -0.5px;
+}
+
+.logo-sub {
+  font-size: 11px;
+  color: var(--dd-gray-500);
+  font-weight: 400;
+  margin-left: 8px;
+  border-left: 1px solid var(--dd-gray-300);
+  padding-left: 8px;
+}
+
+.header-nav {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+
+.header-nav a {
+  color: var(--dd-gray-700);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.header-nav a:hover { color: var(--dd-red); }
+.header-nav a.active {
+  color: var(--dd-red);
+  border-bottom-color: var(--dd-red);
+}
+
+/* ===== Main Content ===== */
+.main {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 24px 48px;
+}
+
+/* ===== Hero ===== */
+.hero {
+  background: linear-gradient(135deg, var(--dd-black) 0%, #2d2d2d 100%);
+  color: var(--dd-white);
+  padding: 48px 40px;
+  border-radius: var(--dd-radius);
+  margin: 24px 0;
+}
+
+.hero h1 {
+  font-size: 32px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.hero p {
+  font-size: 18px;
+  color: #bbb;
+  max-width: 720px;
+}
+
+.hero .badge {
+  display: inline-block;
+  background: var(--dd-green);
+  color: var(--dd-white);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 16px;
+}
+
+/* ===== KPI Cards ===== */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+
+.kpi-card {
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  padding: 24px;
+  box-shadow: var(--dd-shadow);
+}
+
+.kpi-label {
+  font-size: 13px;
+  color: var(--dd-gray-500);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--dd-black);
+}
+
+.kpi-sub {
+  font-size: 13px;
+  color: var(--dd-gray-500);
+  margin-top: 4px;
+}
+
+.kpi-pass { border-left: 4px solid var(--dd-green); }
+.kpi-warn { border-left: 4px solid var(--dd-orange); }
+
+/* ===== Section ===== */
+.section {
+  background: var(--dd-white);
+  border-radius: var(--dd-radius);
+  padding: 32px;
+  margin: 24px 0;
+  box-shadow: var(--dd-shadow);
+}
+
+.section h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--dd-black);
+  border-bottom: 2px solid var(--dd-gray-100);
+  padding-bottom: 12px;
+}
+
+.section h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 20px 0 12px;
+  color: var(--dd-gray-900);
+}
+
+.section p {
+  color: var(--dd-gray-700);
+  margin-bottom: 12px;
+}
+
+/* ===== Charts ===== */
+.chart-container {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.chart-container img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--dd-radius);
+  box-shadow: var(--dd-shadow);
+}
+
+.chart-caption {
+  font-size: 13px;
+  color: var(--dd-gray-500);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+  margin: 20px 0;
+}
+
+/* ===== Tables ===== */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 14px;
+}
+
+.data-table th {
+  background: var(--dd-gray-100);
+  padding: 12px 16px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--dd-gray-900);
+  border-bottom: 2px solid var(--dd-gray-300);
+}
+
+.data-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dd-gray-100);
+}
+
+.data-table tr:hover { background: #fafafa; }
+
+.verdict-pass {
+  color: var(--dd-green);
+  font-weight: 700;
+  background: #e8f5e9;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.verdict-warn {
+  color: var(--dd-orange);
+  font-weight: 700;
+  background: #fff3e0;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.verdict-fail {
+  color: var(--dd-red);
+  font-weight: 700;
+  background: #fce4ec;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+/* ===== Methodology ===== */
+.methodology {
+  background: var(--dd-gray-100);
+  border-radius: var(--dd-radius);
+  padding: 24px 28px;
+  margin: 20px 0;
+}
+
+.methodology h3 {
+  margin-top: 0;
+  color: var(--dd-gray-900);
+}
+
+.methodology ul {
+  padding-left: 20px;
+  color: var(--dd-gray-700);
+}
+
+.methodology li { margin-bottom: 6px; }
+
+/* ===== Footer ===== */
+.footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--dd-gray-500);
+  font-size: 13px;
+  border-top: 1px solid var(--dd-gray-300);
+  margin-top: 48px;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .hero { padding: 32px 24px; }
+  .hero h1 { font-size: 24px; }
+  .hero p { font-size: 16px; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .chart-grid { grid-template-columns: 1fr; }
+  .section { padding: 20px; }
+  .header-nav { gap: 12px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Top Banner ===== -->
+<div class="top-banner">
+  Monte Carlo Simulation Results &mdash; Pharmacy &amp; Consumer Wellness &bull; Internal Use Only &bull; Generated 2026-03-31
+</div>
+
+<!-- ===== Header ===== -->
+<header class="header">
+  <div class="header-inner">
+    <a class="logo" href="index.html">
+      <svg class="logo-heart" viewBox="0 0 40 36" fill="none">
+        <rect x="2" y="20" width="8" height="14" rx="1.5" fill="#CC0000"/>
+        <rect x="13" y="12" width="8" height="22" rx="1.5" fill="#CC0000"/>
+        <rect x="24" y="4" width="8" height="30" rx="1.5" fill="#CC0000"/>
+        <line x1="0" y1="35" x2="40" y2="35" stroke="#CC0000" stroke-width="2"/>
+      </svg>
+      <span class="logo-text">DD</span>
+      <span class="logo-sub">Data Decomp</span>
+    </a>
+    <nav class="header-nav">
+      <a href="index.html">Dashboard</a>
+      <a href="simulation.html" class="active">Simulation</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== Main Content ===== -->
+<div class="main">
+
+  <!-- ===== Hero ===== -->
+  <div class="hero">
+    <h1>Monte Carlo Simulation Results</h1>
+    <p>10-run simulation validates the tiered coupon strategy against CVS 10-K revenue benchmarks, producing $2.96B annualized revenue within 2% of the proportional target.</p>
+    <span class="badge">PASS &mdash; Revenue within 20% of 10-K target</span>
+  </div>
+
+  <!-- ===== Key Metrics Dashboard ===== -->
+  <div class="kpi-grid">
+    <div class="kpi-card kpi-pass">
+      <div class="kpi-label">Annualized Revenue</div>
+      <div class="kpi-value">$2.96B</div>
+      <div class="kpi-sub">10-K target: $2.90B (+2.0%)</div>
+    </div>
+    <div class="kpi-card kpi-pass">
+      <div class="kpi-label">Coupon Hit Rate @5</div>
+      <div class="kpi-value">22.9%</div>
+      <div class="kpi-sub">Naive baseline: 2.3% (10x improvement)</div>
+    </div>
+    <div class="kpi-card kpi-pass">
+      <div class="kpi-label">Catalog Coverage</div>
+      <div class="kpi-value">50.2%</div>
+      <div class="kpi-sub">Naive baseline: 0.08% (628x improvement)</div>
+    </div>
+    <div class="kpi-card kpi-pass">
+      <div class="kpi-label">Breakout Successes</div>
+      <div class="kpi-value">100 / 100</div>
+      <div class="kpi-sub">Long-tail products promoted to Tier 2</div>
+    </div>
+  </div>
+
+  <!-- ===== Revenue Convergence ===== -->
+  <div class="section">
+    <h2>Revenue Convergence</h2>
+    <p>Net revenue converges quickly across all 10 Monte Carlo runs, with the coefficient of variation dropping below 5% by epoch 1. The shaded bands show &plusmn;1 standard deviation across runs.</p>
+    <div class="chart-container">
+      <img src="images/revenue_convergence.png" alt="Revenue convergence across Monte Carlo runs">
+      <div class="chart-caption">Figure 1: Weekly revenue streams with &plusmn;1&sigma; confidence bands across 10 MC runs.</div>
+    </div>
+    <div class="chart-container">
+      <img src="images/run_overlay.png" alt="Individual run overlay">
+      <div class="chart-caption">Figure 2: Individual run trajectories showing tight clustering around the mean.</div>
+    </div>
+  </div>
+
+  <!-- ===== Product Tier Analysis ===== -->
+  <div class="section">
+    <h2>Product Tier Distribution</h2>
+    <p>12,000 products are segmented into tiers based on revenue velocity and discount responsiveness. The tiered strategy allocates coupon budget where it will have the highest impact.</p>
+    <div class="chart-grid">
+      <div class="chart-container">
+        <img src="images/tier_distribution.png" alt="Product tier distribution">
+        <div class="chart-caption">Figure 3: Product count and revenue share by tier.</div>
+      </div>
+      <div class="chart-container">
+        <img src="images/tier_revenue_stacked.png" alt="Revenue composition by tier over epochs">
+        <div class="chart-caption">Figure 4: Revenue composition (recommended vs organic) across simulation epochs.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Elasticity Landscape ===== -->
+  <div class="section">
+    <h2>Price Elasticity Landscape</h2>
+    <p>Each product's price elasticity (sensitivity to discounts) is plotted against its current revenue. The "opportunity zone" highlights products with high elasticity but low current revenue &mdash; the best candidates for discount-driven growth.</p>
+    <div class="chart-container">
+      <img src="images/elasticity_landscape.png" alt="Price elasticity landscape scatter plot">
+      <div class="chart-caption">Figure 5: Elasticity vs revenue, colored by tier. Circled products represent high-elasticity opportunities.</div>
+    </div>
+  </div>
+
+  <!-- ===== Breakout Candidates ===== -->
+  <div class="section">
+    <h2>Breakout Candidates</h2>
+    <p>100 Tier 4 (long-tail) products were tested for promotion to Tier 2. All 100 candidates successfully transitioned, demonstrating that targeted discounts can unlock latent demand in the long tail.</p>
+    <div class="chart-grid">
+      <div class="chart-container">
+        <img src="images/breakout_timeline.png" alt="Breakout promotion timeline">
+        <div class="chart-caption">Figure 6: Cumulative breakout promotions and predicted vs actual discount levels.</div>
+      </div>
+      <div class="chart-container">
+        <img src="images/breakout_consistency.png" alt="Breakout consistency across runs">
+        <div class="chart-caption">Figure 7: Promotion consistency across all 10 MC runs.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Revenue Calibration vs 10-K ===== -->
+  <div class="section">
+    <h2>Revenue Calibration vs CVS 10-K</h2>
+    <p>We validate the simulation's economic realism by comparing annualized output against CVS Health's actual SEC filings, scaled proportionally from 74M ExtraCare members to our 10M simulated customer base.</p>
+
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Filing</th>
+          <th>P&CW Revenue</th>
+          <th>Front Store Revenue</th>
+          <th>Front Store %</th>
+          <th>Proportional (10M)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>FY2024</td>
+          <td>$124,500M</td>
+          <td>$21,522M</td>
+          <td>19.1%</td>
+          <td>$2.91B</td>
+        </tr>
+        <tr>
+          <td>FY2025</td>
+          <td>$139,367M</td>
+          <td>$21,459M</td>
+          <td>17.1%</td>
+          <td>$2.90B</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Simulated vs 10-K Comparison</h3>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Simulated</th>
+          <th>10-K Target (FY2025)</th>
+          <th>Difference</th>
+          <th>Assessment</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Annualized Revenue</td>
+          <td>$2.96B</td>
+          <td>$2.90B</td>
+          <td>+2.0%</td>
+          <td><span class="verdict-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Weekly Net Revenue</td>
+          <td>$56.9M</td>
+          <td>$57.1M target</td>
+          <td>-0.4%</td>
+          <td><span class="verdict-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Discount Rate</td>
+          <td>6.3%</td>
+          <td>&lt;10-12%</td>
+          <td>Within range</td>
+          <td><span class="verdict-pass">PASS</span></td>
+        </tr>
+        <tr>
+          <td>Coupon Hit Rate @5</td>
+          <td>22.9%</td>
+          <td>15-25%</td>
+          <td>Within range</td>
+          <td><span class="verdict-pass">PASS</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== Methodology ===== -->
+  <div class="section">
+    <h2>Methodology</h2>
+    <div class="methodology">
+      <h3>Monte Carlo Simulation Approach</h3>
+      <p>The simulation models a closed-loop recommendation system where the model's coupon decisions affect customer behavior, which in turn generates the data used to retrain the model. Each run represents one realization of this feedback loop with randomized parameters.</p>
+      <ul>
+        <li><strong>10 independent runs</strong> with sampled fatigue steepness and halo probability parameters to capture uncertainty in consumer response</li>
+        <li><strong>30 epochs (weeks)</strong> per run, with model retraining every 10 epochs on accumulated purchase data</li>
+        <li><strong>10M simulated customers</strong> across 12,000 products in 4 tiers, matching CVS's ExtraCare loyalty program scale</li>
+        <li><strong>Convergence criterion:</strong> coefficient of variation (CV) &lt; 5% on net revenue, achieved by epoch 1 indicating stable mean estimates</li>
+      </ul>
+
+      <h3>Why 10 Runs &times; 30 Epochs?</h3>
+      <p>With CV &lt; 5% achieved early, 10 runs provides sufficient statistical power for directional claims about revenue, hit rates, and breakout success. The 30-epoch horizon allows 3 full retraining cycles (every 10 epochs), enough to observe whether the model improves, degrades, or stabilizes through the feedback loop. For production-grade confidence intervals, a 50+ run overnight simulation would be recommended.</p>
+
+      <h3>Regression to the Mean</h3>
+      <p>In the context of our simulation, "regression to the mean" refers to the tendency of extreme initial recommendations to moderate over successive retraining cycles. Products that received unusually high or low coupon allocations in early epochs tend to converge toward stable equilibrium levels as the model incorporates actual purchase feedback. This is a desirable property &mdash; it means the system self-corrects rather than amplifying noise.</p>
+    </div>
+  </div>
+
+  <!-- ===== Comparison Table: Naive vs Tiered ===== -->
+  <div class="section">
+    <h2>Naive Model vs Tiered Model</h2>
+    <p>The tiered model dramatically outperforms the naive (untrained) baseline across all key metrics.</p>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Naive Model</th>
+          <th>Tiered Model</th>
+          <th>Improvement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Annual Revenue</td>
+          <td>$1.59B &plusmn; $673M</td>
+          <td>$2.96B</td>
+          <td style="color: var(--dd-green); font-weight: 700;">+86%</td>
+        </tr>
+        <tr>
+          <td>Coupon Hit Rate</td>
+          <td>2.3% &plusmn; 1.8%</td>
+          <td>22.9%</td>
+          <td style="color: var(--dd-green); font-weight: 700;">10x</td>
+        </tr>
+        <tr>
+          <td>Catalog Coverage</td>
+          <td>0.08%</td>
+          <td>50.2%</td>
+          <td style="color: var(--dd-green); font-weight: 700;">628x</td>
+        </tr>
+        <tr>
+          <td>Fatigue Score</td>
+          <td>52.77</td>
+          <td>Controlled by tier strategy</td>
+          <td style="color: var(--dd-green); font-weight: 700;">Eliminated</td>
+        </tr>
+        <tr>
+          <td>Discount Rate</td>
+          <td>N/A (no targeting)</td>
+          <td>6.3% of revenue</td>
+          <td>$198M/year budget</td>
+        </tr>
+        <tr>
+          <td>Breakout Promotions</td>
+          <td>0</td>
+          <td>100 products</td>
+          <td>New capability</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ===== Summary Dashboard ===== -->
+  <div class="section">
+    <h2>Summary Dashboard</h2>
+    <div class="chart-container">
+      <img src="images/summary_dashboard.png" alt="Summary dashboard showing revenue waterfall, hit rates, and active customers">
+      <div class="chart-caption">Figure 8: Revenue waterfall, hit rate convergence, and active customer trends.</div>
+    </div>
+  </div>
+
+  <!-- ===== Notebook Link ===== -->
+  <div class="section" style="text-align: center; padding: 24px;">
+    <p style="color: var(--dd-gray-500);">Full analysis with interactive charts and detailed tables available in the Jupyter notebook:</p>
+    <p><code style="background: var(--dd-gray-100); padding: 8px 16px; border-radius: 4px; font-size: 14px;">notebooks/analysis.ipynb</code></p>
+  </div>
+
+</div>
+
+<!-- ===== Footer ===== -->
+<div class="footer">
+  Data Decomp &mdash; Pharmacy &amp; Consumer Wellness Analytics &bull; Simulation generated 2026-03-31 &bull; 10 runs &times; 30 epochs
+</div>
+
+</body>
+</html>

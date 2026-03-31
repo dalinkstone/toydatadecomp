@@ -72,6 +72,8 @@ class TieredEpochResult:
     organic_revenue: float       # Tier 1 at-price + Tier 3 passive
     discount_cost: float         # total discount dollars given away
     net_revenue: float           # total_revenue - discount_cost
+    incremental_revenue: float   # coupon revenue that would NOT have happened organically
+    cannibalized_revenue: float  # coupon revenue that would have happened anyway
 
     # Per-tier
     tier1_revenue: float
@@ -108,6 +110,7 @@ class _Acc:
         "tier3_rev",
         "tier4_offers", "tier4_conv", "tier4_rev", "tier4_disc",
         "halo_rev", "active", "coupons",
+        "incr_rev", "cannibal_rev",
     )
 
     def __init__(self) -> None:
@@ -125,6 +128,8 @@ class _Acc:
         self.halo_rev = 0.0
         self.active = 0
         self.coupons = 0
+        self.incr_rev = 0.0
+        self.cannibal_rev = 0.0
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -228,12 +233,13 @@ class TieredConsumerSimulator:
 
     def simulate_epoch(
         self,
-        offer_pids: np.ndarray,       # (N, 8) int64
-        offer_scores: np.ndarray,     # (N, 8) float32
-        offer_prices: np.ndarray,     # (N, 8) float32
-        offer_discounts: np.ndarray,  # (N, 8) float32
-        offer_tiers: np.ndarray,      # (N, 8) int8  (2 or 4)
-        offer_cat_idx: np.ndarray,    # (N, 8) int32
+        offer_pids: np.ndarray,            # (N, 8) int64
+        offer_scores: np.ndarray,          # (N, 8) float32
+        offer_prices: np.ndarray,          # (N, 8) float32
+        offer_discounts: np.ndarray,       # (N, 8) float32
+        offer_tiers: np.ndarray,           # (N, 8) int8  (2 or 4)
+        offer_cat_idx: np.ndarray,         # (N, 8) int32
+        offer_organic_ratios: np.ndarray,  # (N, 8) float32
     ) -> TieredEpochResult:
         """Simulate one weekly epoch for all customers, processed in chunks.
 
@@ -303,6 +309,7 @@ class TieredConsumerSimulator:
             a_discs = offer_discounts[start:end][active_idx]
             a_tiers = offer_tiers[start:end][active_idx]
             a_cats = offer_cat_idx[start:end][active_idx]
+            a_organic = offer_organic_ratios[start:end][active_idx]
 
             # -- Per-product fatigue: cooldown filter --
             a_cool = self.slot_cooldown[start:end][active_idx]
@@ -361,10 +368,12 @@ class TieredConsumerSimulator:
             acc.tier2_conv += int(t2_b.sum())
             if t2_b.any():
                 loc = np.where(t2_b)
-                acc.tier2_rev += float(
-                    (a_prices[loc] * (1.0 - a_discs[loc])).sum()
-                )
+                rev = a_prices[loc] * (1.0 - a_discs[loc])
+                acc.tier2_rev += float(rev.sum())
                 acc.tier2_disc += float((a_prices[loc] * a_discs[loc]).sum())
+                org = a_organic[loc]
+                acc.cannibal_rev += float((rev * org).sum())
+                acc.incr_rev += float((rev * (1.0 - org)).sum())
 
             # -- Tier 4 --
             is_t4 = a_tiers == 4
@@ -374,10 +383,12 @@ class TieredConsumerSimulator:
             acc.tier4_conv += int(t4_b.sum())
             if t4_b.any():
                 loc = np.where(t4_b)
-                acc.tier4_rev += float(
-                    (a_prices[loc] * (1.0 - a_discs[loc])).sum()
-                )
+                rev = a_prices[loc] * (1.0 - a_discs[loc])
+                acc.tier4_rev += float(rev.sum())
                 acc.tier4_disc += float((a_prices[loc] * a_discs[loc]).sum())
+                org = a_organic[loc]
+                acc.cannibal_rev += float((rev * org).sum())
+                acc.incr_rev += float((rev * (1.0 - org)).sum())
 
             # -- Record purchase pairs for retraining --
             if purchased.any():
@@ -430,7 +441,7 @@ class TieredConsumerSimulator:
                     self.category_avg_prices[c] = float(a_prices[mask].mean())
 
             del (a_pids, a_scores, a_prices, a_discs, a_tiers, a_cats,
-                 base_p, rolls, purchased, valid, cooled)
+                 a_organic, base_p, rolls, purchased, valid, cooled)
 
         # ── Assemble result ──────────────────────────────────────────────
         all_cids = (
@@ -460,6 +471,8 @@ class TieredConsumerSimulator:
             organic_revenue=org_rev,
             discount_cost=disc_cost,
             net_revenue=total_rev - disc_cost,
+            incremental_revenue=acc.incr_rev,
+            cannibalized_revenue=acc.cannibal_rev,
             tier1_revenue=acc.tier1_rev,
             tier1_discount_cost=acc.tier1_disc,
             tier2_offers=acc.tier2_offers,
