@@ -352,6 +352,32 @@ def elasticity_estimate(db_path, output_dir, sample_pct):
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# breakout
+# ═══════════════════════════════════════════════════════════════════════
+
+@toydatadecomp.group()
+def breakout():
+    """Breakout candidate identification from Tier 4 products."""
+    pass
+
+
+@breakout.command("identify")
+@click.option("--model-dir", default="data/model/",
+              help="Directory with embeddings and tier/elasticity parquets.")
+@click.option("--data-dir", default="data/",
+              help="Root data directory (contains real/products.parquet).")
+@click.option("--top-k", default=100, type=int,
+              help="Number of top breakout candidates to export.")
+def breakout_identify(model_dir, data_dir, top_k):
+    """Identify Tier 4 products with breakout potential near Tier 1 archetypes."""
+    from ml.breakout import main as _main
+    console.print("[bold]→ Running breakout candidate identification...[/bold]")
+    args = ["--model-dir", model_dir, "--data-dir", data_dir,
+            "--top-k", str(top_k)]
+    _main(args, standalone_mode=False)
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # simulate
 # ═══════════════════════════════════════════════════════════════════════
 
