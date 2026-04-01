@@ -12,3 +12,8 @@ pandas
 click
 rich
 pytest
+jupyter
+nbconvert
+matplotlib
+seaborn
+xlrd
