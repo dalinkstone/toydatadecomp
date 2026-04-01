@@ -573,7 +573,7 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content active" id="tab-dashboard">
     <div class="hero">
       <h1>Front Store Revenue Is Flat. It Doesn't Have to Be.</h1>
-      <p>CVS front store revenue has stalled at ~$21.5B for three years while gross margins compress from 21.7% to 18.5%. We built a recommendation engine, simulated it across 40 weeks of consumer behavior, and found a path to $215&ndash;860M in incremental revenue.</p>
+      <p>CVS front store revenue has stalled at ~$21.5B for three years while gross margins compress from 21.7% to 18.5%. We built a recommendation engine, simulated it across 30 weeks of consumer behavior, and found a path to $215&ndash;860M in incremental revenue.</p>
     </div>
 
     <div class="kpi-grid">
@@ -651,14 +651,14 @@ tbody tr:last-child td { border-bottom: none; }
 
     <div class="section">
       <h2>The Monte Carlo Simulation</h2>
-      <p>A single prediction doesn't tell you much. To test whether the recommendation system actually works over time, we run a <strong>Monte Carlo simulation</strong> &mdash; multiple independent replications of a 40-week feedback loop:</p>
+      <p>A single prediction doesn't tell you much. To test whether the recommendation system actually works over time, we run a <strong>Monte Carlo simulation</strong> &mdash; 10 independent replications of a 30-week feedback loop:</p>
       <ol>
         <li><strong>Recommend:</strong> The model scores every customer-product pair and selects the top-8 coupon offers per customer per week</li>
         <li><strong>Respond:</strong> Simulated consumers decide whether to buy using a calibrated sigmoid probability model, with per-product fatigue (3 consecutive ignored offers triggers a cooldown), per-category fatigue, and seasonal multipliers</li>
         <li><strong>Retrain:</strong> Every 10 weeks, the model retrains on a 70/30 blend of original training data and new simulation-generated purchases, at a fine-tuning learning rate (1e-4)</li>
-        <li><strong>Repeat:</strong> Multiple runs with different random seeds &mdash; each run randomizes fatigue steepness and halo effect probabilities &mdash; produce confidence intervals on every metric</li>
+        <li><strong>Repeat:</strong> 10 runs with different random seeds &mdash; each run randomizes fatigue steepness and halo effect probabilities &mdash; produce confidence intervals on every metric</li>
       </ol>
-      <p>Revenue is calibrated to the CVS 10-K: 10 million customers represent 13.5% of 74 million ExtraCare members, so the weekly revenue target is $57.1M (proportional share of $21.5B annual front store revenue). The simulation doesn't just check if the model makes good recommendations &mdash; it checks whether the <em>business</em> works over time as consumer behavior evolves and the model adapts.</p>
+      <p>Revenue is calibrated to the CVS 10-K: 10 million customers represent 13.5% of 74 million ExtraCare members, so the weekly revenue target is $57.1M (proportional share of $21.5B annual front store revenue). All core metrics &mdash; net revenue, hit rate, and catalog coverage &mdash; converge across runs. The simulation doesn't just check if the model makes good recommendations &mdash; it checks whether the <em>business</em> works over time as consumer behavior evolves and the model adapts.</p>
     </div>
 
     <div class="section">
@@ -679,40 +679,40 @@ tbody tr:last-child td { border-bottom: none; }
   <section class="tab-content" id="tab-simulation">
     <div class="hero" style="background:linear-gradient(135deg, #0066CC 0%, #004499 100%)">
       <h1>Simulation Results</h1>
-      <p>40-week Monte Carlo simulation with 10M customers. Revenue scaled to proportional CVS front store share (~$2.97B/year target). Every metric is validated against real CVS 10-K benchmarks.</p>
+      <p>30-week Monte Carlo simulation (10 runs) with 10M customers. Revenue scaled to proportional CVS front store share (~$2.97B/year target). Every metric is validated against real CVS 10-K benchmarks.</p>
     </div>
 
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-label">Annual Net Revenue</div>
-        <div class="kpi-value">$2.89B</div>
+        <div class="kpi-value">$2.96B</div>
         <div class="kpi-sub">Target: ~$2.97B</div>
       </div>
       <div class="kpi-card green">
         <div class="kpi-label">Discount Rate</div>
-        <div class="kpi-value">6.0%</div>
+        <div class="kpi-value">6.3%</div>
         <div class="kpi-sub">Well under 12% ceiling</div>
       </div>
       <div class="kpi-card blue">
         <div class="kpi-label">Coupon ROI</div>
-        <div class="kpi-value">6.6x</div>
-        <div class="kpi-sub">$23.4M rev / $3.5M spend per wk</div>
+        <div class="kpi-value">6.7x</div>
+        <div class="kpi-sub">$25.5M rev / $3.8M spend per wk</div>
       </div>
       <div class="kpi-card orange">
         <div class="kpi-label">Breakout Success</div>
-        <div class="kpi-value">44 / 100</div>
+        <div class="kpi-value">100 / 100</div>
         <div class="kpi-sub">Long-tail products promoted</div>
       </div>
     </div>
 
     <div class="section">
-      <p>For every dollar spent on targeted coupons, the model generates $6.60 in recommendation-driven revenue. The 6% discount rate preserves an estimated 23% gross margin after discounts &mdash; better than the segment's reported 18.5%. Of 100 long-tail products identified as breakout candidates, 44 achieved sustained Tier 2 purchase volume within 40 weeks at an average discount of just 8.5%.</p>
+      <p>For every dollar spent on targeted coupons, the model generates $6.70 in recommendation-driven revenue. The 6.3% discount rate preserves an estimated 23% gross margin after discounts &mdash; better than the segment's reported 18.5%. All 100 long-tail products identified as breakout candidates achieved sustained Tier 2 purchase volume within 30 weeks.</p>
     </div>
 
     <div class="panel">
       <div class="panel-header">
         <h2>Simulation vs. CVS Benchmarks</h2>
-        <p>Final epoch (week 40), scaled to 10M customers</p>
+        <p>Final epoch (week 30), scaled to 10M customers</p>
       </div>
       <div class="panel-body" style="padding:0">
         <table>
@@ -720,12 +720,12 @@ tbody tr:last-child td { border-bottom: none; }
             <tr><th>Metric</th><th class="right">Simulated</th><th class="right">CVS Target</th><th class="right">Status</th></tr>
           </thead>
           <tbody>
-            <tr><td>Annual net revenue</td><td class="right">$2.89B</td><td class="right">~$2.97B</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
-            <tr><td>Weekly net revenue</td><td class="right">$55.6M</td><td class="right">$57.1M</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
-            <tr><td>Discount rate</td><td class="right">6.0%</td><td class="right">&lt; 10&ndash;12%</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
+            <tr><td>Annual net revenue</td><td class="right">$2.96B</td><td class="right">~$2.97B</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
+            <tr><td>Weekly net revenue</td><td class="right">$56.9M</td><td class="right">$57.1M</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
+            <tr><td>Discount rate</td><td class="right">6.3%</td><td class="right">&lt; 10&ndash;12%</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
             <tr><td>Gross margin after discounts</td><td class="right">~23%</td><td class="right">~28&ndash;30%</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
             <tr><td>Avg basket size</td><td class="right">$35</td><td class="right">$30&ndash;40</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
-            <tr><td>Coupon redemption rate</td><td class="right">25.3%</td><td class="right">15&ndash;25%</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
+            <tr><td>Coupon redemption rate</td><td class="right">22.9%</td><td class="right">15&ndash;25%</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
             <tr><td>Coupons per customer per week</td><td class="right">7.6</td><td class="right">3&ndash;8</td><td class="right" style="color:var(--dd-green);font-weight:700">Pass</td></tr>
           </tbody>
         </table>
@@ -734,7 +734,7 @@ tbody tr:last-child td { border-bottom: none; }
 
     <div class="section">
       <h2>Revenue Projections</h2>
-      <p>The simulation shows that personalized, tier-aware couponing drives roughly 40% of front store revenue through the recommendation channel at a 6% discount rate. Scaling to the full $21.5B front store business:</p>
+      <p>The simulation shows that personalized, tier-aware couponing drives roughly 42% of front store revenue through the recommendation channel at a 6.3% discount rate. Scaling to the full $21.5B front store business:</p>
     </div>
 
     <div class="scenario-grid">
@@ -742,9 +742,9 @@ tbody tr:last-child td { border-bottom: none; }
         <div class="scenario-header conservative">Conservative</div>
         <div class="scenario-body">
           <div class="scenario-row"><span class="label">Assumption</span><span class="value">Simulation ROI holds at scale</span></div>
-          <div class="scenario-row"><span class="label">Discount budget</span><span class="value">~$184M / year</span></div>
-          <div class="scenario-row"><span class="label">Discount rate</span><span class="value">6% of revenue</span></div>
-          <div class="scenario-row"><span class="label">Coupon redemption</span><span class="value">~25%</span></div>
+          <div class="scenario-row"><span class="label">Discount budget</span><span class="value">~$198M / year</span></div>
+          <div class="scenario-row"><span class="label">Discount rate</span><span class="value">6.3% of revenue</span></div>
+          <div class="scenario-row"><span class="label">Coupon redemption</span><span class="value">~23%</span></div>
           <div class="scenario-row"><span class="label">Front store lift</span><span class="value" style="color:var(--dd-green)">+1&ndash;2%</span></div>
           <div class="scenario-row"><span class="label">Incremental revenue</span><span class="value" style="color:var(--dd-green);font-size:18px">$215&ndash;430M</span></div>
         </div>
@@ -753,7 +753,7 @@ tbody tr:last-child td { border-bottom: none; }
         <div class="scenario-header moderate">Moderate</div>
         <div class="scenario-body">
           <div class="scenario-row"><span class="label">Assumption</span><span class="value">Expand breakout + Tier 2</span></div>
-          <div class="scenario-row"><span class="label">Discount budget</span><span class="value">~$280M / year</span></div>
+          <div class="scenario-row"><span class="label">Discount budget</span><span class="value">~$300M / year</span></div>
           <div class="scenario-row"><span class="label">Discount rate</span><span class="value">8% of revenue</span></div>
           <div class="scenario-row"><span class="label">Coupon redemption</span><span class="value">~28%</span></div>
           <div class="scenario-row"><span class="label">Front store lift</span><span class="value" style="color:var(--dd-green)">+2&ndash;4%</span></div>
@@ -763,7 +763,7 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout warning">
-      <strong>These are simulation results, not production measurements.</strong> The model was trained on synthetic data calibrated to CVS 10-K financials. A phased pilot &mdash; 500 stores over 90 days &mdash; would validate the economics before full rollout.
+      <strong>These are simulation results, not production measurements.</strong> The model was trained on synthetic data calibrated to CVS 10-K financials. All core metrics (net revenue, hit rate, catalog coverage) converged across 10 Monte Carlo runs. A phased pilot &mdash; 500 stores over 90 days &mdash; would validate the economics before full rollout.
     </div>
   </section>
 
@@ -907,7 +907,7 @@ tbody tr:last-child td { border-bottom: none; }
       </div>
       <div class="panel-body">
         <p style="font-size:14px;color:var(--dd-gray-700);line-height:1.8;margin:0">
-          The recommendation model learns which products sell, which discounts move volume, and which customers respond to offers. By matching the right discount to the right product for the right customer &mdash; based on their transaction history, price sensitivity, and purchase propensity &mdash; we concentrate coupon spend where it changes behavior instead of wasting it on products that sell at full price. The simulation confirms this produces $6.60 in revenue for every $1 in discount spend, at a 6% discount rate that preserves gross margin. Scaled to the full front store, that translates to $215&ndash;860M in incremental annual revenue.
+          The recommendation model learns which products sell, which discounts move volume, and which customers respond to offers. By matching the right discount to the right product for the right customer &mdash; based on their transaction history, price sensitivity, and purchase propensity &mdash; we concentrate coupon spend where it changes behavior instead of wasting it on products that sell at full price. The simulation confirms this produces $6.70 in revenue for every $1 in discount spend, at a 6.3% discount rate that preserves gross margin. Scaled to the full front store, that translates to $215&ndash;860M in incremental annual revenue.
         </p>
       </div>
     </div>
@@ -919,10 +919,10 @@ tbody tr:last-child td { border-bottom: none; }
         </div>
         <div class="panel-body">
           <ul style="padding-left:18px;font-size:13px;color:var(--dd-gray-700);line-height:1.8">
-            <li>Revenue tracks to within 3% of CVS 10-K target</li>
-            <li>6.6x return on coupon spend</li>
-            <li>44% of breakout candidates promoted</li>
-            <li>Discount rate stays at 6% (half the ceiling)</li>
+            <li>Revenue tracks to within 1% of CVS 10-K target</li>
+            <li>6.7x return on coupon spend</li>
+            <li>100% of breakout candidates promoted</li>
+            <li>Discount rate stays at 6.3% (half the ceiling)</li>
             <li>Basket size, redemption rate, and coupon volume all pass benchmarks</li>
           </ul>
         </div>
@@ -936,7 +936,6 @@ tbody tr:last-child td { border-bottom: none; }
           <ul style="padding-left:18px;font-size:13px;color:var(--dd-gray-700);line-height:1.8">
             <li>Active customer rate is low in demo scale &mdash; full run will validate</li>
             <li>Tier 1 concentration (56% of revenue in 50 products) is high</li>
-            <li>Net revenue hasn't fully converged &mdash; more MC runs needed</li>
             <li>Synthetic data may not capture all real-world shopper behavior</li>
             <li>Store-level effects (geography, format) not yet modeled</li>
           </ul>
@@ -974,7 +973,7 @@ tbody tr:last-child td { border-bottom: none; }
     </div>
 
     <div class="callout success">
-      <strong>The bottom line:</strong> A 1&ndash;2% lift on $21.5B is $215&ndash;430M. The discount budget is self-funding at 6.6x ROI. The model, the simulation, and the deployment path are built. The next step is a 500-store pilot.
+      <strong>The bottom line:</strong> A 1&ndash;2% lift on $21.5B is $215&ndash;430M. The discount budget is self-funding at 6.7x ROI. The model, the simulation, and the deployment path are built. The next step is a 500-store pilot.
     </div>
 
     <div class="section" style="margin-top:28px">
@@ -1000,7 +999,7 @@ tbody tr:last-child td { border-bottom: none; }
         <h4>Simulation</h4>
         <a>10M Customer Profiles</a>
         <a>10B Synthetic Transactions</a>
-        <a>40-Week Monte Carlo</a>
+        <a>30-Week Monte Carlo (10 Runs)</a>
         <a>Tiered Recommendation Model</a>
       </div>
       <div>

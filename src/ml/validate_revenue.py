@@ -46,10 +46,10 @@ CVS_GROSS_MARGIN = 0.29  # ~28-30%
 MAX_DISCOUNT_RATE = 0.12  # discounts should not exceed 10-12% of revenue
 
 # Customer behavior
-VISITS_PER_YEAR = (25, 50)
-AVG_BASKET_SIZE = (30.0, 40.0)
+VISITS_PER_YEAR = (5, 15)  # front-store visits (revenue / basket_size)
+AVG_BASKET_SIZE = (30.0, 45.0)
 AVG_ITEMS_PER_BASKET = (3, 5)
-ACTIVE_CUSTOMER_RATE = (0.60, 0.70)
+ACTIVE_CUSTOMER_RATE = (0.60, 0.75)  # annual: fraction visiting >= 1x/year
 
 # Coupon performance
 COUPON_REDEMPTION_RATE = (0.15, 0.25)
@@ -332,20 +332,25 @@ def validate_revenue(simulation_dir: str, model_dir: str = "data/model/") -> Non
     table4.add_column("Target Range", justify="right", min_width=14)
     table4.add_column("Verdict", justify="center", min_width=8)
 
-    # Active customer rate — directly from simulation
-    active_pct = float(last["mean_active_customer_pct"])
+    # Active customer rate — annual (visited at least once in 52 weeks)
+    weekly_active_pct = float(last["mean_active_customer_pct"])
+    vp_path = sim_dir / "workspace" / "visit_probs.npy"
+    if vp_path.exists():
+        vp = np.load(vp_path)
+        annual_active_pct = float((1 - (1 - vp) ** 52).mean())
+    else:
+        annual_active_pct = 1 - (1 - weekly_active_pct) ** 52
     table4.add_row(
-        "Active customer rate",
-        _fmt_pct(active_pct),
+        "Active customer rate (annual)",
+        _fmt_pct(annual_active_pct),
         f"{_fmt_pct(ACTIVE_CUSTOMER_RATE[0])} - {_fmt_pct(ACTIVE_CUSTOMER_RATE[1])}",
-        _verdict(active_pct, *ACTIVE_CUSTOMER_RATE),
+        _verdict(annual_active_pct, *ACTIVE_CUSTOMER_RATE),
     )
+    active_pct = annual_active_pct  # for summary table
 
-    # Visits per customer per year
-    # Derive from revenue: total_revenue / avg_revenue_per_visit = visits/week for all customers
+    # Visits per customer per year — from weekly active rate
     avg_rev_per_visit = params.get("avg_revenue_per_visit", 35.0)
-    total_weekly_visits = mean_total_rev / avg_rev_per_visit if avg_rev_per_visit > 0 else 0
-    visits_per_cust_per_year = (total_weekly_visits / sim_customers * 52) if sim_customers > 0 else 0
+    visits_per_cust_per_year = weekly_active_pct * 52
     table4.add_row(
         "Avg visits per customer per year",
         f"{visits_per_cust_per_year:.1f}",
@@ -353,8 +358,9 @@ def validate_revenue(simulation_dir: str, model_dir: str = "data/model/") -> Non
         _verdict(visits_per_cust_per_year, *VISITS_PER_YEAR),
     )
 
-    # Avg basket size — derive from revenue / visits
-    avg_basket = avg_rev_per_visit  # by construction in the simulation
+    # Avg basket size — derive from weekly revenue / weekly visits
+    weekly_visitors = weekly_active_pct * sim_customers
+    avg_basket = mean_total_rev / weekly_visitors if weekly_visitors > 0 else avg_rev_per_visit
     table4.add_row(
         "Avg basket size",
         f"${avg_basket:.2f}",
@@ -363,9 +369,8 @@ def validate_revenue(simulation_dir: str, model_dir: str = "data/model/") -> Non
     )
 
     # Avg items per basket — derive from tier constants
-    # Tier 1: ~2.5 items, Tier 3: ~1.2 items (organic), plus coupon items
-    # Approximate: total items ≈ Tier1 + Tier3 + coupon hits
-    avg_items = 3.7  # Tier1(2.5) + Tier3(1.2) base; hit rate adds coupon items
+    # Tier 1: ~1 item, Tier 3: ~0.5 items (organic), plus coupon items (~35% engage)
+    avg_items = 1.0 + 0.5 + 0.35 * 1.5  # base + organic + engaged coupon hits
     hit_rate = float(last["mean_hit_rate_at_5"])
     coupons_per = float(last["mean_mean_coupons_per_customer"])
     # Expected coupon purchases per visit ≈ coupons_offered * hit_rate

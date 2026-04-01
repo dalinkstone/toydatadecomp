@@ -37,7 +37,7 @@ WEEKLY_REVENUE_TARGET = 57_100_000
 AVG_REVENUE_PER_VISIT = 35.0
 
 # Tier 1: core revenue drivers (always bought by visitors)
-TIER1_ITEMS_PER_VISIT = 2.5  # Poisson lambda
+TIER1_ITEMS_PER_VISIT = 1.0  # Poisson lambda (1 core item per trip)
 
 # Tier 1 discount by price_sensitivity_bucket (0=insensitive .. 4=very)
 TIER1_DISCOUNT_SCHEDULE = np.array(
@@ -45,7 +45,10 @@ TIER1_DISCOUNT_SCHEDULE = np.array(
 )
 
 # Tier 3: organic sellers (no discount, probabilistic)
-TIER3_ITEMS_PER_VISIT = 1.2  # Poisson lambda
+TIER3_ITEMS_PER_VISIT = 0.5  # Poisson lambda (occasional organic pickup)
+
+# Coupon engagement: not every visit involves coupon redemption
+COUPON_ENGAGE_RATE = 0.35  # fraction of visitors who check/use coupons
 
 # Fatigue
 PRODUCT_FATIGUE_STREAK = 3   # consecutive offers w/o purchase before cooldown
@@ -326,6 +329,11 @@ class TieredConsumerSimulator:
             )
             entering_cooldown = a_streak >= PRODUCT_FATIGUE_STREAK
             valid &= ~entering_cooldown
+
+            # -- Coupon engagement: only a fraction of visitors use coupons --
+            engage_rolls = self.rng.random(n_active, dtype=np.float32)
+            engaged = engage_rolls < COUPON_ENGAGE_RATE
+            valid[~engaged] = False
 
             # -- Per-category fatigue (within this epoch) --
             cat_count = np.zeros((n_active, self.num_categories), dtype=np.int8)

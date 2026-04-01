@@ -324,6 +324,22 @@ def prepare_workspace(config: SimulationConfig) -> str:
                 product_tier_array[idx] = 3
     np.save(ws / "product_tier_array.npy", product_tier_array)
 
+    # If stored organic ratios are unreliable (synthetic data often has ~1.0
+    # for all products), apply tier-based estimates:
+    #   Tier 1 (core staples):        high organic (bought at-price anyway)
+    #   Tier 2 (discount-responsive): low organic (coupon-driven)
+    #   Tier 3 (organic sellers):     high organic (by definition)
+    #   Tier 4 (breakout candidates): very low organic (need coupon exposure)
+    TIER_ORGANIC_FALLBACK = {1: 0.85, 2: 0.30, 3: 0.80, 4: 0.15}
+    if float(organic_ratios[product_tier_array == 2].mean()) > 0.90:
+        console.print(
+            "[yellow]  Organic ratios unreliable (>90% for Tier 2); "
+            "using tier-based estimates[/yellow]"
+        )
+        for tier, ratio in TIER_ORGANIC_FALLBACK.items():
+            organic_ratios[product_tier_array == tier] = ratio
+        np.save(ws / "product_organic_ratios.npy", organic_ratios)
+
     # Tier 1 data
     t1_mask = product_tier_array == 1
     np.save(ws / "tier1_pids.npy", product_ids[t1_mask].astype(np.int64))
@@ -387,32 +403,52 @@ def prepare_workspace(config: SimulationConfig) -> str:
 
     # Estimate actual per-visit revenue from product prices and tier mix
     from simulation.vectorized_consumer import (
-        TIER1_ITEMS_PER_VISIT, TIER3_ITEMS_PER_VISIT,
+        TIER1_ITEMS_PER_VISIT, TIER3_ITEMS_PER_VISIT, COUPON_ENGAGE_RATE,
     )
     t1_avg = float(prices[t1_mask].mean()) if t1_mask.any() else 10.0
     t2_avg = float(prices[product_tier_array == 2].mean()) if (product_tier_array == 2).any() else 10.0
     t3_avg_safe = t3_avg if t3_mask.any() else 8.0
     t4_avg = float(prices[product_tier_array == 4].mean()) if (product_tier_array == 4).any() else 10.0
-    # Estimate: Tier1 items + Tier3 items + ~1 coupon conversion + halo
-    estimated_per_visit = (
+    # Base visit spend (all visitors get Tier 1 + Tier 3)
+    base_visit_rev = (
         TIER1_ITEMS_PER_VISIT * t1_avg * 0.95   # Tier 1 with avg 5% discount
         + TIER3_ITEMS_PER_VISIT * t3_avg_safe    # Tier 3 organic
-        + 1.2 * t2_avg * 0.90                    # ~1.2 Tier 2 conversions
-        + 0.3 * min(t4_avg, t2_avg * 2) * 0.85   # ~0.3 Tier 4 conversions (cap price)
     )
+    # Coupon revenue only for engaged visitors (COUPON_ENGAGE_RATE fraction)
+    coupon_visit_rev = (
+        1.2 * t2_avg * 0.90                     # ~1.2 Tier 2 conversions
+        + 0.3 * min(t4_avg, t2_avg * 2) * 0.85  # ~0.3 Tier 4 conversions (cap price)
+    )
+    estimated_per_visit = base_visit_rev + COUPON_ENGAGE_RATE * coupon_visit_rev
     estimated_per_visit = max(estimated_per_visit, 10.0)
     console.print(f"  Estimated per-visit revenue: ${estimated_per_visit:,.2f}")
 
     # Calibrate to revenue target (scaled by customer count)
     base_fraction = N / 10_000_000
     scaled_target = WEEKLY_REVENUE_TARGET * base_fraction
-    target_active = scaled_target / estimated_per_visit
-    scale = target_active / max(float(raw_prob.sum()), 1.0)
-    visit_probs = np.clip(raw_prob * scale, 0.005, 0.95).astype(np.float32)
+    target_mean_prob = scaled_target / (estimated_per_visit * N)
+    target_mean_prob = np.clip(target_mean_prob, 0.01, 0.50)
+
+    # Reshape flat visit distribution into realistic heterogeneity.
+    # Gamma(shape=0.35) creates heavy/moderate/light/dormant segments
+    # matching CVS ExtraCare patterns (~13% dormant, ~67% annual active).
+    gamma_shape = 0.35
+    rng_vp = np.random.default_rng(42)
+    weights = rng_vp.gamma(gamma_shape, 1.0 / gamma_shape, size=N)
+    visit_probs = (target_mean_prob * weights).astype(np.float32)
+    np.clip(visit_probs, 0.0, 0.95, out=visit_probs)
+    # Rescale to hit exact revenue target after clipping
+    actual_mean = float(visit_probs.mean())
+    if actual_mean > 0:
+        visit_probs *= target_mean_prob / actual_mean
+        np.clip(visit_probs, 0.0, 0.95, out=visit_probs)
     np.save(ws / "visit_probs.npy", visit_probs)
+
+    annual_active = float((1 - (1 - visit_probs) ** 52).mean())
     console.print(
         f"  Expected active/epoch: {visit_probs.sum():,.0f} "
-        f"({visit_probs.mean():.1%} mean prob)"
+        f"({visit_probs.mean():.1%} mean prob, "
+        f"{annual_active:.0%} annual active)"
     )
 
     # ── Price sensitivity (0-based, N elements) ──────────────────────
